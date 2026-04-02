@@ -9,8 +9,11 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("index.html", import.meta.url)),
+        controller: fileURLToPath(new URL("controller.html", import.meta.url)),
+        controllerPlay: fileURLToPath(new URL("controller-play.html", import.meta.url)),
+        display: fileURLToPath(new URL("display.html", import.meta.url)),
         game: fileURLToPath(new URL("game.html", import.meta.url)),
       },
     },
   },
-})
+});

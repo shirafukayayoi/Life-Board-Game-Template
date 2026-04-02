@@ -19,6 +19,7 @@ type GameState = {
   phase: "lobby" | "playing" | "result";
   round: number;
   players: Player[];
+  turnIndex: number;
 };
 
 type ServerMessage =
@@ -32,8 +33,8 @@ type ClientMessage =
   | { type: "request_state" };
 
 const BOARD_SIZE = 30;
-const BOARD_COLUMNS = 6;
-const BOARD_ROWS = 5;
+const BOARD_COLUMNS = 10;
+const BOARD_ROWS = 8;
 
 const EVENT_TEMPLATES = Array.from({ length: BOARD_SIZE }, (_, index) => ({
   id: `evt-${index + 1}`,
@@ -79,6 +80,7 @@ function GamePage() {
     phase: "playing",
     round: 0,
     players: [],
+    turnIndex: 0,
   });
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -86,6 +88,11 @@ function GamePage() {
     if (!clientId) return undefined;
     return state.players.find((player) => player.id === clientId);
   }, [clientId, state.players]);
+
+  const currentTurnPlayer = useMemo(() => {
+    if (state.players.length === 0) return undefined;
+    return state.players[state.turnIndex % state.players.length];
+  }, [state.players, state.turnIndex]);
 
   const currentEvent = useMemo(() => {
     if (!myPlayer) return null;
@@ -158,7 +165,7 @@ function GamePage() {
     socket.onclose = () => {
       setStatus("切断されました");
       setClientId(null);
-      setState({ phase: "playing", round: 0, players: [] });
+      setState({ phase: "playing", round: 0, players: [], turnIndex: 0 });
     };
   };
 
@@ -171,8 +178,51 @@ function GamePage() {
     sendMessage({ type: "player_roll" });
   };
 
-  const cells = useMemo(
-    () => Array.from({ length: BOARD_SIZE }, (_, index) => index + 1),
+  const outerPath = useMemo(() => {
+    const positions: Array<{ row: number; col: number }> = [];
+    for (let col = 0; col < BOARD_COLUMNS; col += 1) {
+      positions.push({ row: 0, col });
+    }
+    for (let row = 1; row < BOARD_ROWS - 1; row += 1) {
+      positions.push({ row, col: BOARD_COLUMNS - 1 });
+    }
+    for (let col = BOARD_COLUMNS - 1; col >= 0; col -= 1) {
+      positions.push({ row: BOARD_ROWS - 1, col });
+    }
+    for (let row = BOARD_ROWS - 2; row >= 1; row -= 1) {
+      positions.push({ row, col: 0 });
+    }
+    return positions.slice(0, BOARD_SIZE);
+  }, []);
+
+  const cellMap = useMemo(() => {
+    const map = new Map<string, number>();
+    outerPath.forEach((pos, index) => {
+      map.set(`${pos.row}-${pos.col}`, index + 1);
+    });
+    return map;
+  }, [outerPath]);
+
+  const directionMap = useMemo(() => {
+    const map = new Map<number, string>();
+    outerPath.forEach((pos, index) => {
+      const next = outerPath[(index + 1) % outerPath.length];
+      if (!next) return;
+      let arrow = "right";
+      if (next.row > pos.row) arrow = "down";
+      if (next.row < pos.row) arrow = "up";
+      if (next.col < pos.col) arrow = "left";
+      map.set(index + 1, arrow);
+    });
+    return map;
+  }, [outerPath]);
+
+  const gridCells = useMemo(
+    () =>
+      Array.from({ length: BOARD_ROWS * BOARD_COLUMNS }, (_, index) => ({
+        row: Math.floor(index / BOARD_COLUMNS),
+        col: index % BOARD_COLUMNS,
+      })),
     []
   );
 
@@ -214,8 +264,18 @@ function GamePage() {
           <h2>あなたのターン</h2>
           <span className="round">位置 {myPlayer?.position ?? 0} / {BOARD_SIZE}</span>
         </div>
+        <div className="turn-banner">
+          今の番: {currentTurnPlayer?.name ?? "待機中"}
+        </div>
         <div className="actions">
-          <button onClick={rollDice} disabled={!clientId || state.phase !== "playing"}>
+          <button
+            onClick={rollDice}
+            disabled={
+              !clientId ||
+              state.phase !== "playing" ||
+              currentTurnPlayer?.id !== clientId
+            }
+          >
             サイコロを振る
           </button>
         </div>
@@ -240,25 +300,42 @@ function GamePage() {
           className="board"
           style={{ gridTemplateColumns: `repeat(${BOARD_COLUMNS}, minmax(0, 1fr))` }}
         >
-          {cells.map((cell) => {
-            const occupants = state.players.filter(
-              (player) => player.position === cell
-            );
+          {gridCells.map((cell) => {
+            const position = cellMap.get(`${cell.row}-${cell.col}`) ?? null;
+            const occupants = position
+              ? state.players.filter((player) => player.position === position)
+              : [];
             return (
-              <div key={cell} className="board-cell">
-                <div className="cell-number">{cell}</div>
-                <div className="cell-tokens">
-                  {occupants.map((player) => (
-                    <div
-                      key={player.id}
-                      className="token"
-                      style={{ backgroundColor: colorForId(player.id) }}
-                      title={player.name}
-                    >
-                      {player.name.slice(0, 1)}
+              <div
+                key={`${cell.row}-${cell.col}`}
+                className={`board-cell ${position ? "active" : "empty"}`}
+              >
+                {position ? (
+                  <>
+                    <div className="cell-number">{position}</div>
+                    <span
+                      className={`cell-arrow dir-${directionMap.get(position) ?? "right"}`}
+                      aria-hidden
+                    />
+                    <div className="cell-tokens">
+                      {occupants.map((player) => (
+                        <div
+                          key={player.id}
+                          className="token"
+                          style={{ backgroundColor: colorForId(player.id) }}
+                          title={player.name}
+                        >
+                          {player.name.slice(0, 1)}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </>
+                ) : (
+                  <div className="cell-center">
+                    <div className="center-title">Campus Life</div>
+                    <div className="center-sub">人生ゲーム</div>
+                  </div>
+                )}
               </div>
             );
           })}

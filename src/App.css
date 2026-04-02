@@ -5,6 +5,71 @@
   padding: 32px clamp(16px, 4vw, 48px) 48px;
 }
 
+.controller-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 14px 28px;
+}
+
+.display-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 12px;
+  padding: 12px;
+  background: linear-gradient(145deg, #f0e4cc, #f6f8f4);
+}
+
+.display-header {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 12px;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-family: "Fira Sans", sans-serif;
+}
+
+.display-brand {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.display-turn {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.display-roll {
+  color: var(--muted);
+}
+
+.display-fullscreen {
+  white-space: nowrap;
+}
+
+.display-main {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(280px, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+.display-board .board {
+  height: 100%;
+}
+
+.display-side {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
 .hero {
   background: linear-gradient(135deg, #ffffff, #f7efe4);
   border-radius: 24px;
@@ -101,6 +166,17 @@
   align-items: baseline;
 }
 
+.turn-banner {
+  margin: 8px 0 16px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(11, 110, 79, 0.12);
+  color: var(--accent);
+  font-family: "Fira Sans", sans-serif;
+  font-size: 14px;
+  display: inline-block;
+}
+
 .round {
   font-family: "Fira Sans", sans-serif;
   color: var(--muted);
@@ -180,6 +256,12 @@ button.ghost {
   word-break: break-all;
 }
 
+.controller-qr {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+}
+
 .placeholder {
   font-family: "Fira Sans", sans-serif;
   color: var(--muted);
@@ -203,6 +285,7 @@ button.ghost {
   padding: 18px;
   border-radius: 18px;
   border: 1px solid var(--border);
+  position: relative;
 }
 
 .board-cell {
@@ -215,10 +298,77 @@ button.ghost {
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.6);
 }
 
+.board-cell.empty {
+  background: transparent;
+  border: 1px dashed rgba(138, 125, 101, 0.2);
+  box-shadow: none;
+  display: grid;
+  place-items: center;
+}
+
+.board-cell.active {
+  background: #fffdf8;
+}
+
 .cell-number {
   font-family: "Fira Sans", sans-serif;
   font-size: 12px;
   color: #8a7d65;
+}
+
+.cell-arrow {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  color: #b19b7a;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.cell-arrow::before {
+  content: "▶";
+}
+
+.cell-arrow.dir-right {
+  right: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.cell-arrow.dir-right::before {
+  content: "▶";
+}
+
+.cell-arrow.dir-left {
+  left: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.cell-arrow.dir-left::before {
+  content: "◀";
+}
+
+.cell-arrow.dir-up {
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.cell-arrow.dir-up::before {
+  content: "▲";
+}
+
+.cell-arrow.dir-down {
+  bottom: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.cell-arrow.dir-down::before {
+  content: "▼";
 }
 
 .cell-tokens {
@@ -226,6 +376,23 @@ button.ghost {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
+}
+
+.cell-center {
+  text-align: center;
+  color: #8a7d65;
+  font-family: "Fira Sans", sans-serif;
+}
+
+.center-title {
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.center-sub {
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .token {
@@ -240,6 +407,11 @@ button.ghost {
   border: 2px solid #fff7e6;
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.12);
   transition: transform 0.25s ease;
+}
+
+.token.offline {
+  opacity: 0.45;
+  filter: grayscale(0.7);
 }
 
 .token:hover {
@@ -310,5 +482,13 @@ button.ghost {
 
   .panel {
     padding: 20px;
+  }
+
+  .display-header {
+    grid-template-columns: 1fr;
+  }
+
+  .display-main {
+    grid-template-columns: 1fr;
   }
 }
