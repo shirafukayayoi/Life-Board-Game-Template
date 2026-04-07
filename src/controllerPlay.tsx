@@ -668,9 +668,10 @@ function ControllerPlayPage() {
             setAvailableChoiceIds([]);
             setEventTargetPlayerId(null);
           }
-          if (msg.state.phase !== "animating") {
+          // Don't clear animation state if we're currently showing stat changes
+          // The animation timer will clean up after 2 seconds
+          if (!showStatChanges) {
             setLastChoiceResult(null);
-            setShowStatChanges(false);
           }
           break;
 

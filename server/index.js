@@ -105,6 +105,8 @@ function defaultGameState() {
     currentEvent: null,
     availableChoiceIds: [],
     lastChoiceResult: null,
+    /** Track which players already had a threshold event this round */
+    thresholdFiredThisRound: new Set(),
   };
 }
 
@@ -222,33 +224,36 @@ function getEventForPosition(positionId) {
  * Returns an overriding event or null.
  */
 function checkThresholdEvents(player) {
+  // One threshold event per player per round max
+  if (state.thresholdFiredThisRound.has(player.id)) {
+    return null;
+  }
+
   const res = player.resources;
 
-  // 1. health (time) < 4 AND random < 0.5 -> emergency hospitalization
+  let result = null;
+
+  // 1. time < 4 AND random < 0.5 -> emergency hospitalization
   if (res.time < 4 && Math.random() < 0.5) {
-    return THRESHOLD_EVENTS["緊急入院"];
+    result = THRESHOLD_EVENTS["緊急入院"];
   }
-
   // 2. time < 6 AND random < 0.2 -> ryuunen crisis
-  if (res.time < 6 && Math.random() < 0.2) {
-    return THRESHOLD_EVENTS["留年危機"];
+  else if (res.time < 6 && Math.random() < 0.2) {
+    result = THRESHOLD_EVENTS["留年危機"];
   }
-
-  // 3. money <= -3 -> broke (mild debt is tolerated)
-  if (res.money <= -3) {
-    return THRESHOLD_EVENTS["金欠"];
+  // 3. money <= -3 -> broke (guaranteed)
+  else if (res.money <= -3) {
+    result = THRESHOLD_EVENTS["金欠"];
   }
-  // money < 0 but > -3 -> 50% chance of broke event
-  if (res.money < 0 && Math.random() < 0.5) {
-    return THRESHOLD_EVENTS["金欠"];
-  }
-
   // 4. has_license AND random < 0.1 -> bike stop
-  if (player.flags.has_license && Math.random() < 0.1) {
-    return THRESHOLD_EVENTS["無灯火運転"];
+  else if (player.flags.has_license && Math.random() < 0.1) {
+    result = THRESHOLD_EVENTS["無灯火運転"];
   }
 
-  return null;
+  if (result) {
+    state.thresholdFiredThisRound.add(player.id);
+  }
+  return result;
 }
 
 /**
@@ -539,13 +544,17 @@ function endRound() {
   // Start next round
   state.currentRound = finishedRound + 1;
   state.completedTurns = [];
+  state.thresholdFiredThisRound = new Set();
   state.turnIndex = 0;
   state.lastRoll = null;
   state.lastChoiceResult = null;
   state.currentEvent = null;
   state.availableChoiceIds = [];
 
-  // Apply per-round flag effects for next round
+  // Apply per-round flag effects at end of previous round (not start of new)
+  // This way players see costs as a result of their lifestyle, not as a surprise
+  // before they can act. Threshold checks happen during turns, after the player
+  // has had a chance to earn money/time.
   for (const player of state.players) {
     if (player.online) {
       applyPerRoundFlagEffects(player);
@@ -560,7 +569,7 @@ function endRound() {
  * End the game, calculate results, broadcast.
  */
 function endGame() {
-  const activePlayers = state.players.filter((p) => p.online || true); // Include all players
+  const activePlayers = state.players.slice(); // Include all players regardless of online status
   const results = generateResults(activePlayers);
 
   state.phase = "result";
