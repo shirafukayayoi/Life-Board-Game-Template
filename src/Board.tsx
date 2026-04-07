@@ -8,13 +8,6 @@ type Props = {
   highlightSquareId?: string;
 };
 
-const YEAR_COLORS: Record<number, string> = {
-  1: "var(--year-1)",
-  2: "var(--year-2)",
-  3: "var(--year-3)",
-  4: "var(--year-4)",
-};
-
 /** Build SVG path data connecting consecutive main-track squares. */
 function buildMainTrackPath(): string {
   const parts: string[] = [];

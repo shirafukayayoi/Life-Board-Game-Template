@@ -5,8 +5,6 @@ import {
   choosePrimaryHostUrl,
   colorForPlayer,
   getRoundInfo,
-  RESOURCE_LABELS,
-  EXPERIENCE_LABELS,
   type ClientMessage,
   type GameState,
   type ServerMessage,

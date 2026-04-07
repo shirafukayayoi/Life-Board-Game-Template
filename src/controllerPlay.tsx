@@ -25,7 +25,6 @@ import {
   type Player,
   type StatEffects,
   type ResourceKey,
-  type ExperienceKey,
   RESOURCE_KEYS,
   RESOURCE_LABELS,
   RESOURCE_RANGES,
@@ -425,7 +424,7 @@ function StatsDashboard({ player }: { player: Player }) {
   const activeFlags = useMemo(() => {
     const result: { key: string; emoji: string; label: string }[] = [];
     for (const [key, info] of Object.entries(FLAG_DISPLAY)) {
-      if ((player.flags as Record<string, unknown>)[key]) {
+      if ((player.flags as unknown as Record<string, unknown>)[key]) {
         result.push({ key, ...info });
       }
     }
@@ -521,8 +520,8 @@ function StatsDashboard({ player }: { player: Player }) {
                 >
                   <div
                     style={{
-                      width: 80,
                       ...S.statBar(pct, STAT_COLORS[key]),
+                      width: 80,
                     }}
                   />
                   <span style={{ fontWeight: 700, minWidth: 20 }}>{val}</span>

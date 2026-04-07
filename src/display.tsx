@@ -7,7 +7,6 @@ import "./App.css";
 import {
   colorForPlayer,
   getRoundInfo,
-  RESOURCE_LABELS,
   type ClientMessage,
   type GameEvent,
   type GameState,
