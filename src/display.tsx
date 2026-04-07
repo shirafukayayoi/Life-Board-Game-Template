@@ -1,27 +1,89 @@
-import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
+import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import confetti from "canvas-confetti";
 import { Board } from "./Board";
-import "./App.css";
 import "./index.css";
+import "./App.css";
 import {
-  BOARD_SIZE,
+  colorForPlayer,
+  getRoundInfo,
+  RESOURCE_LABELS,
   type ClientMessage,
+  type GameEvent,
   type GameState,
+  type ChoiceResult,
+  type PlayerResult,
+  type RoundInfo,
   type ServerMessage,
+  type StatEffects,
+  defaultGameState,
   wsUrlFromInput,
 } from "./gameShared";
 
-const INITIAL_STATE: GameState = {
-  phase: "lobby",
-  round: 0,
-  players: [],
-  turnIndex: 0,
-  lastRoll: null,
+// ─── Year color helper ───────────────────────────────────────────
+const YEAR_COLORS: Record<number, string> = {
+  1: "var(--year-1)",
+  2: "var(--year-2)",
+  3: "var(--year-3)",
+  4: "var(--year-4)",
 };
+
+function yearColor(year: number): string {
+  return YEAR_COLORS[year] ?? "var(--text-secondary)";
+}
+
+// ─── Stat effect label helper ────────────────────────────────────
+const ALL_LABELS: Record<string, string> = {
+  time: "時間",
+  money: "お金",
+  credits: "単位",
+  health: "体力",
+  intellect: "知性",
+  connections: "人脈",
+  work_tolerance: "労働耐性",
+  action_power: "行動力",
+  romance_exp: "恋愛力",
+};
+
+function effectBadges(effects: StatEffects) {
+  return Object.entries(effects)
+    .filter(([, v]) => v !== 0 && v !== undefined)
+    .map(([key, value]) => {
+      const label = ALL_LABELS[key] ?? key;
+      const isPositive = (value as number) > 0;
+      return (
+        <span
+          key={key}
+          className={`event-effect-badge ${isPositive ? "event-effect-badge--positive" : "event-effect-badge--negative"}`}
+        >
+          {label} {isPositive ? "+" : ""}{value}
+        </span>
+      );
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Display Page
+// ═══════════════════════════════════════════════════════════════════
 
 function DisplayPage() {
   const [status, setStatus] = useState("接続準備中");
-  const [state, setState] = useState<GameState>(INITIAL_STATE);
+  const [state, setState] = useState<GameState>(defaultGameState);
+
+  // Event overlay state
+  const [showEvent, setShowEvent] = useState<GameEvent | null>(null);
+  const [eventPlayerId, setEventPlayerId] = useState<string | null>(null);
+  const [eventAvailableIds, setEventAvailableIds] = useState<string[]>([]);
+  const [choiceResult, setChoiceResult] = useState<ChoiceResult | null>(null);
+  const [eventFading, setEventFading] = useState(false);
+
+  // Round-end banner
+  const [roundEndInfo, setRoundEndInfo] = useState<RoundInfo | null>(null);
+
+  // Game result
+  const [gameResults, setGameResults] = useState<PlayerResult[] | null>(null);
+  const [showResultContent, setShowResultContent] = useState(false);
+
   const wsRef = useRef<WebSocket | null>(null);
 
   const hostUrl = useMemo(() => {
@@ -29,11 +91,31 @@ function DisplayPage() {
     return params.get("host") || window.location.origin;
   }, []);
 
-  const currentTurnPlayer = useMemo(() => {
+  // Current player info
+  const currentPlayer = useMemo(() => {
     if (state.players.length === 0) return undefined;
     return state.players[state.turnIndex % state.players.length];
   }, [state.players, state.turnIndex]);
 
+  const roundInfo = useMemo(
+    () => getRoundInfo(state.currentRound),
+    [state.currentRound],
+  );
+
+  // Fade out event overlay after choice result
+  const fadeOutEvent = useCallback(() => {
+    setEventFading(true);
+    const timer = setTimeout(() => {
+      setShowEvent(null);
+      setChoiceResult(null);
+      setEventPlayerId(null);
+      setEventAvailableIds([]);
+      setEventFading(false);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // WebSocket connection
   useEffect(() => {
     const targetUrl = wsUrlFromInput(hostUrl);
     if (!targetUrl) {
@@ -57,11 +139,50 @@ function DisplayPage() {
 
     socket.onmessage = (event) => {
       const message = JSON.parse(event.data) as ServerMessage;
-      if (message.type === "state") {
-        setState(message.state);
-      }
-      if (message.type === "system") {
-        setStatus(message.message);
+
+      switch (message.type) {
+        case "state":
+          setState(message.state);
+          break;
+
+        case "show_event":
+          setShowEvent(message.event);
+          setEventPlayerId(message.playerId);
+          setEventAvailableIds(message.availableChoiceIds);
+          setChoiceResult(null);
+          setEventFading(false);
+          break;
+
+        case "choice_result":
+          setChoiceResult(message.result);
+          // Auto-dismiss after 3 seconds
+          setTimeout(() => {
+            fadeOutEvent();
+          }, 3000);
+          break;
+
+        case "round_end":
+          setRoundEndInfo(message.roundInfo);
+          setTimeout(() => setRoundEndInfo(null), 3000);
+          break;
+
+        case "game_result":
+          setGameResults(message.results);
+          // Show intro for 3s, then reveal content
+          setTimeout(() => {
+            setShowResultContent(true);
+            // Fire confetti for the winner
+            confetti({
+              particleCount: 150,
+              spread: 100,
+              origin: { y: 0.5 },
+            });
+          }, 3200);
+          break;
+
+        case "system":
+          setStatus(message.message);
+          break;
       }
     };
 
@@ -69,68 +190,302 @@ function DisplayPage() {
     socket.onerror = () => setStatus("接続エラー");
 
     return () => socket.close();
-  }, [hostUrl]);
+  }, [hostUrl, fadeOutEvent]);
 
   const requestFullscreen = async () => {
     try {
       await document.documentElement.requestFullscreen();
     } catch {
-      setStatus("フルスクリーンに失敗しました");
+      // Fullscreen may not be supported
     }
   };
 
-  return (
-    <div className="display-page">
-      <header className="display-header">
-        <div className="display-brand">Campus Life Game / Display</div>
-        <div className="display-turn">今の番: {currentTurnPlayer?.name ?? "待機中"}</div>
-        <div className="display-roll">
-          直近の出目:{" "}
-          {state.lastRoll ? `${state.lastRoll.playerName} が ${state.lastRoll.value}` : "-"}
-        </div>
-        <button className="display-fullscreen" onClick={requestFullscreen}>
-          フルスクリーン
-        </button>
-      </header>
-
-      <main className="display-main">
-        <section className="display-board">
-          <Board players={state.players} />
-        </section>
-        <section className="display-side">
-          <div className="panel">
-            <h2>接続状態</h2>
-            <div className="stats">
-              <span>{status}</span>
-              <span>Round {state.round}</span>
-              <span>参加 {state.players.length}人</span>
-            </div>
-          </div>
-          <div className="panel">
-            <h2>プレイヤー位置</h2>
-            <div className="players compact">
-              {state.players.map((player, index) => (
-                <div key={player.id} className="player-card">
-                  <div className="player-name">
-                    {player.name} {state.turnIndex === index ? "(今の番)" : ""}
+  // ─── Result screen ──────────────────────────────────────────────
+  if (gameResults) {
+    return (
+      <div className="result-screen">
+        {!showResultContent && (
+          <div className="result-intro">4年間が過ぎた...</div>
+        )}
+        {showResultContent && (
+          <div className="result-content">
+            <h1 style={{ textAlign: "center", marginBottom: 8 }}>
+              卒業 — 最終結果
+            </h1>
+            {gameResults.map((result) => (
+              <div
+                key={result.playerId}
+                className={`result-player ${result.rank === 1 ? "result-player--winner" : ""}`}
+              >
+                <div
+                  className={`result-rank ${result.rank <= 3 ? `result-rank--${result.rank}` : ""}`}
+                >
+                  #{result.rank}
+                </div>
+                <div className="result-info">
+                  <div className="result-ending-header">
+                    <span className="result-emoji">{result.ending.emoji}</span>
+                    <span className="result-player-name">
+                      {result.playerName}
+                    </span>
                   </div>
-                  <div className="stats">
-                    <span>位置 {player.position} / {BOARD_SIZE}</span>
-                    <span>出目 {player.lastRoll ?? "-"}</span>
-                    <span>{player.online ? "接続中" : "オフライン"}</span>
+                  <div className="result-ending-title">
+                    {result.ending.title}
+                  </div>
+                  <div className="result-ending-desc">
+                    {result.ending.description}
+                  </div>
+                  <div className="result-mini-stats">
+                    <span>
+                      単位: {result.resources.credits}
+                    </span>
+                    <span>
+                      知性: {result.experience.intellect}
+                    </span>
+                    <span>
+                      人脈: {result.experience.connections}
+                    </span>
+                    <span>
+                      行動力: {result.experience.action_power}
+                    </span>
                   </div>
                 </div>
-              ))}
-            </div>
+                <div className="result-score">
+                  <div>{result.score}</div>
+                  <div className="result-score__label">SCORE</div>
+                </div>
+              </div>
+            ))}
           </div>
-        </section>
-      </main>
+        )}
+      </div>
+    );
+  }
+
+  // ─── Determine highlight square ─────────────────────────────────
+  const highlightSquareId =
+    state.phase === "choosing" && currentPlayer
+      ? currentPlayer.position
+      : undefined;
+
+  const hasEventOverlay = showEvent !== null;
+
+  return (
+    <div className="display-page" data-theme="dark">
+      {/* ── Header ────────────────────────────────────────────────── */}
+      <header className="display-header">
+        <div className="display-header__left">
+          <span
+            className="display-header__year-dot"
+            style={{ background: yearColor(roundInfo.year) }}
+          />
+          <span className="display-header__round-label">
+            {roundInfo.label}
+          </span>
+        </div>
+
+        <div className="display-header__center">
+          {currentPlayer ? (
+            <>
+              <span
+                className="display-header__turn-name"
+                style={{ color: yearColor(roundInfo.year) }}
+              >
+                {currentPlayer.name}
+              </span>
+              {" "}
+              {state.phase === "choosing" ? "選択中..." : "のターン"}
+            </>
+          ) : (
+            <span style={{ color: "var(--text-secondary)" }}>
+              {state.phase === "lobby" ? "待機中" : "進行中"}
+            </span>
+          )}
+        </div>
+
+        <div className="display-header__right">
+          <span>Round {state.currentRound}/16</span>
+          <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>
+            {status}
+          </span>
+          <button
+            className="display-header__fullscreen"
+            onClick={requestFullscreen}
+          >
+            全画面
+          </button>
+        </div>
+      </header>
+
+      {/* ── Main ──────────────────────────────────────────────────── */}
+      <div className="display-main">
+        {/* Board area */}
+        <div
+          className={`display-board-area ${hasEventOverlay ? "display-board-area--dimmed" : ""}`}
+        >
+          <Board
+            players={state.players}
+            currentPlayerId={currentPlayer?.id}
+            highlightSquareId={highlightSquareId}
+          />
+        </div>
+
+        {/* Side panel */}
+        <div className="display-side">
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--text-secondary)",
+              textTransform: "uppercase" as const,
+              letterSpacing: "0.1em",
+              marginBottom: 4,
+            }}
+          >
+            Players ({state.players.length})
+          </div>
+          {state.players.map((player, index) => {
+            const isActive = currentPlayer?.id === player.id;
+            return (
+              <div
+                key={player.id}
+                className={`display-player-card ${isActive ? "display-player-card--active" : ""}`}
+              >
+                <div className="display-player-card__header">
+                  <span
+                    className="display-player-card__dot"
+                    style={{ background: colorForPlayer(index) }}
+                  />
+                  <span className="display-player-card__name">
+                    {player.name}
+                    {!player.online && (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "var(--year-4)",
+                          marginLeft: 6,
+                        }}
+                      >
+                        offline
+                      </span>
+                    )}
+                  </span>
+                  <span className="display-player-card__pos">
+                    #{player.position}
+                  </span>
+                </div>
+                <div className="display-player-card__stats">
+                  <span className="display-player-card__stat">
+                    ⏱ {player.resources.time}
+                  </span>
+                  <span className="display-player-card__stat">
+                    💰 {player.resources.money}
+                  </span>
+                  <span className="display-player-card__stat">
+                    ❤️ {player.resources.health}
+                  </span>
+                  <span className="display-player-card__stat">
+                    📚 {player.resources.credits}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          {state.players.length === 0 && (
+            <div
+              style={{
+                color: "var(--text-secondary)",
+                padding: "20px 0",
+                textAlign: "center",
+              }}
+            >
+              参加者を待っています...
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Event Overlay ─────────────────────────────────────────── */}
+      {showEvent && (
+        <div
+          className={`event-overlay ${eventFading ? "event-overlay--fadeout" : ""}`}
+        >
+          <div className="event-card">
+            {showEvent.category && (
+              <div className="event-card__category">{showEvent.category}</div>
+            )}
+            <div className="event-card__title">{showEvent.title}</div>
+            <div className="event-card__description">
+              {showEvent.description}
+            </div>
+            {eventPlayerId && (
+              <div className="event-card__player-label">
+                {state.players.find((p) => p.id === eventPlayerId)?.name ??
+                  "?"}{" "}
+                の選択
+              </div>
+            )}
+
+            <div className="event-card__choices">
+              {showEvent.choices.map((choice, i) => {
+                const isAvailable = eventAvailableIds.includes(choice.id);
+                const isChosen = choiceResult?.choiceId === choice.id;
+                const keyLabel = String.fromCharCode(65 + i); // A, B, C...
+
+                let className = "event-choice";
+                if (isChosen) className += " event-choice--chosen";
+                else if (!isAvailable)
+                  className += " event-choice--unavailable";
+                else className += " event-choice--available";
+
+                return (
+                  <div key={choice.id} className={className}>
+                    <div className="event-choice__key">{keyLabel}</div>
+                    <div className="event-choice__text">
+                      <div className="event-choice__label">{choice.label}</div>
+                      {choice.description && (
+                        <div className="event-choice__desc">
+                          {choice.description}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Show effects after choice */}
+            {choiceResult && (
+              <div className="event-effects">
+                {effectBadges(choiceResult.effects)}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Round-end Banner ──────────────────────────────────────── */}
+      {roundEndInfo && (
+        <div className="round-end-banner">
+          <div className="round-end-card">
+            <div
+              className="round-end-card__label"
+              style={{ color: yearColor(roundEndInfo.year) }}
+            >
+              {roundEndInfo.label}
+            </div>
+            <div className="round-end-card__sub">ラウンド終了</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
+// ─── Mount ────────────────────────────────────────────────────────
+document.documentElement.setAttribute("data-theme", "dark");
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <DisplayPage />
-  </StrictMode>
+  </StrictMode>,
 );
