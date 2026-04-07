@@ -234,8 +234,12 @@ function checkThresholdEvents(player) {
     return THRESHOLD_EVENTS["留年危機"];
   }
 
-  // 3. money < 0 -> broke
-  if (res.money < 0) {
+  // 3. money <= -3 -> broke (mild debt is tolerated)
+  if (res.money <= -3) {
+    return THRESHOLD_EVENTS["金欠"];
+  }
+  // money < 0 but > -3 -> 50% chance of broke event
+  if (res.money < 0 && Math.random() < 0.5) {
     return THRESHOLD_EVENTS["金欠"];
   }
 

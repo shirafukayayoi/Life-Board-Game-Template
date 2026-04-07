@@ -39,7 +39,7 @@ export const EVENTS = {
       {
         id: "2A",
         label: "一人暮らしを始める",
-        effects: { time: -1, money: -3, work_tolerance: 1, action_power: 2 },
+        effects: { time: -1, money: -2, work_tolerance: 1, action_power: 2 },
         flagEffects: { living_alone: true },
       },
       {
