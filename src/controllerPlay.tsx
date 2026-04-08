@@ -392,7 +392,7 @@ styleTag.textContent = `
 document.head.appendChild(styleTag);
 
 // ─── Helper: render stat effects as badges ──────────────────────
-function EffectBadges({ effects }: { effects: StatEffects }) {
+export function EffectBadges({ effects }: { effects: StatEffects }) {
   const allKeys = [...RESOURCE_KEYS, ...EXPERIENCE_KEYS] as string[];
   const labels: Record<string, string> = { ...RESOURCE_LABELS, ...EXPERIENCE_LABELS };
   const entries = allKeys
@@ -416,7 +416,7 @@ function EffectBadges({ effects }: { effects: StatEffects }) {
 }
 
 // ─── Stats Dashboard Component ──────────────────────────────────
-function StatsDashboard({ player }: { player: Player }) {
+export function StatsDashboard({ player }: { player: Player }) {
   const [tab, setTab] = useState<"resources" | "experience" | "flags">(
     "resources"
   );
@@ -553,7 +553,7 @@ function StatsDashboard({ player }: { player: Player }) {
 }
 
 // ─── Main Controller Play Page ──────────────────────────────────
-function ControllerPlayPage() {
+export function ControllerPlayPage() {
   const [state, setState] = useState<GameState>(defaultGameState());
   const [clientId, setClientId] = useState<string | null>(
     sessionStorage.getItem("clg_controller_id")
@@ -582,6 +582,8 @@ function ControllerPlayPage() {
   const clientIdRef = useRef<string | null>(clientId);
   clientIdRef.current = clientId;
   const stateRef = useRef<GameState>(state);
+  const showStatChangesRef = useRef(showStatChanges);
+  showStatChangesRef.current = showStatChanges;
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hostUrl = useMemo(() => {
@@ -693,7 +695,7 @@ function ControllerPlayPage() {
             setMyDiceResult(null);
           }
           // Don't clear animation state if we're currently showing stat changes
-          if (!showStatChanges) {
+          if (!showStatChangesRef.current) {
             setLastChoiceResult(null);
           }
           break;

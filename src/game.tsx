@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
+import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./App.css";
 import "./index.css";
@@ -71,9 +71,13 @@ function colorForId(id: string) {
 }
 
 function GamePage() {
-  const [name, setName] = useState("");
-  const [role, setRole] = useState<Role | "">("");
-  const [hostUrlInput, setHostUrlInput] = useState("");
+  const [name, setName] = useState(() => sessionStorage.getItem("clg_name") ?? "");
+  const [role] = useState<Role | "">(
+    () => (sessionStorage.getItem("clg_role") ?? "") as Role | ""
+  );
+  const [hostUrlInput, setHostUrlInput] = useState(
+    () => sessionStorage.getItem("clg_host") ?? ""
+  );
   const [status, setStatus] = useState("未接続");
   const [clientId, setClientId] = useState<string | null>(null);
   const [state, setState] = useState<GameState>({
@@ -100,27 +104,12 @@ function GamePage() {
   }, [myPlayer]);
 
   useEffect(() => {
-    const savedName = sessionStorage.getItem("clg_name") ?? "";
-    const savedRole = (sessionStorage.getItem("clg_role") ?? "") as Role | "";
-    const savedHost = sessionStorage.getItem("clg_host") ?? "";
-    if (savedName) setName(savedName);
-    if (savedRole) setRole(savedRole);
-    if (savedHost) setHostUrlInput(savedHost);
-  }, []);
-
-  useEffect(() => {
     return () => {
       wsRef.current?.close();
     };
   }, []);
 
-  useEffect(() => {
-    if (!name || !role || clientId) return;
-    if (wsRef.current) return;
-    connect();
-  }, [name, role, hostUrlInput, clientId]);
-
-  const connect = () => {
+  const connect = useCallback(() => {
     if (!name.trim()) {
       setStatus("名前を入力してください");
       return;
@@ -167,7 +156,7 @@ function GamePage() {
       setClientId(null);
       setState({ phase: "playing", round: 0, players: [], turnIndex: 0 });
     };
-  };
+  }, [hostUrlInput, name, role]);
 
   const sendMessage = (payload: ClientMessage) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;

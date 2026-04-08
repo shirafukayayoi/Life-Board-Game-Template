@@ -162,7 +162,7 @@ const S = {
 } as const;
 
 // ─── Controller Lobby Page ──────────────────────────────────────
-function ControllerLobbyPage() {
+export function ControllerLobbyPage() {
   const [name, setName] = useState(sessionStorage.getItem("clg_name") ?? "");
   const [state, setState] = useState<GameState>(defaultGameState());
   const [status, setStatus] = useState("未接続");

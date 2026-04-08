@@ -44,8 +44,8 @@ function buildBranchPaths(): Array<{ from: string; path: string }> {
 }
 
 export function Board({ players, currentPlayerId, highlightSquareId }: Props) {
-  const mainPath = useMemo(buildMainTrackPath, []);
-  const branchPaths = useMemo(buildBranchPaths, []);
+  const mainPath = useMemo(() => buildMainTrackPath(), []);
+  const branchPaths = useMemo(() => buildBranchPaths(), []);
 
   // Group players by their current square
   const playersBySquare = useMemo(() => {

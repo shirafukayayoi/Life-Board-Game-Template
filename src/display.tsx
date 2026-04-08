@@ -65,7 +65,7 @@ function effectBadges(effects: StatEffects) {
 //  Display Page
 // ═══════════════════════════════════════════════════════════════════
 
-function DisplayPage() {
+export function DisplayPage() {
   const [status, setStatus] = useState("接続準備中");
   const [state, setState] = useState<GameState>(defaultGameState);
 
@@ -92,6 +92,8 @@ function DisplayPage() {
     const params = new URLSearchParams(window.location.search);
     return params.get("host") || window.location.origin;
   }, []);
+  const targetUrl = useMemo(() => wsUrlFromInput(hostUrl), [hostUrl]);
+  const statusLabel = targetUrl ? status : "接続先URLが不正です";
 
   // Current player info
   const currentPlayer = useMemo(() => {
@@ -120,13 +122,10 @@ function DisplayPage() {
 
   // WebSocket connection
   useEffect(() => {
-    const targetUrl = wsUrlFromInput(hostUrl);
     if (!targetUrl) {
-      setStatus("接続先URLが不正です");
       return;
     }
 
-    setStatus("接続中...");
     const socket = new WebSocket(targetUrl);
     wsRef.current = socket;
 
@@ -205,7 +204,7 @@ function DisplayPage() {
     socket.onerror = () => setStatus("接続エラー");
 
     return () => socket.close();
-  }, [hostUrl, fadeOutEvent]);
+  }, [targetUrl, fadeOutEvent]);
 
   const requestFullscreen = async () => {
     try {
@@ -321,7 +320,7 @@ function DisplayPage() {
         <div className="display-header__right">
           <span>Round {state.currentRound}/16</span>
           <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>
-            {status}
+            {statusLabel}
           </span>
           <button
             className="display-header__fullscreen"
