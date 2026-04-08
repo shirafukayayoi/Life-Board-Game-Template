@@ -1,0 +1,110 @@
+{
+  "緊急入院": {
+    "id": "緊急入院",
+    "title": "緊急入院",
+    "description": "倒れた。病院のベッドで天井を見つめる。",
+    "category": "危機",
+    "choices": [
+      {
+        "id": "緊急入院A",
+        "label": "おとなしく休む",
+        "effects": {
+          "time": 3,
+          "money": -2,
+          "credits": -2,
+          "health": 3
+        }
+      },
+      {
+        "id": "緊急入院B",
+        "label": "点滴打ちながらレポートを書く",
+        "effects": {
+          "time": 1,
+          "money": -2,
+          "credits": 1,
+          "health": 1,
+          "intellect": 1,
+          "work_tolerance": 1
+        }
+      }
+    ]
+  },
+  "留年危機": {
+    "id": "留年危機",
+    "title": "留年危機",
+    "description": "出席日数が足りない。教務課から呼び出し。",
+    "category": "危機",
+    "choices": [
+      {
+        "id": "留年危機A",
+        "label": "生活を立て直す",
+        "effects": {
+          "time": 2,
+          "money": -1,
+          "credits": 2
+        }
+      },
+      {
+        "id": "留年危機B",
+        "label": "もう無理…留年する",
+        "effects": {
+          "time": 3,
+          "money": -3,
+          "credits": -8,
+          "health": -1,
+          "connections": -1
+        }
+      }
+    ]
+  },
+  "金欠": {
+    "id": "金欠",
+    "title": "金欠イベント",
+    "description": "口座残高がマイナス。生活ができない。",
+    "category": "危機",
+    "choices": [
+      {
+        "id": "金欠A",
+        "label": "日払いバイトで食いつなぐ",
+        "effects": {
+          "time": -2,
+          "money": 3,
+          "health": -1,
+          "work_tolerance": 1
+        }
+      },
+      {
+        "id": "金欠B",
+        "label": "友達に借りる",
+        "effects": {
+          "money": 2,
+          "connections": -1
+        }
+      },
+      {
+        "id": "金欠C",
+        "label": "奨学金を申請する",
+        "effects": {
+          "time": -1,
+          "money": 4,
+          "intellect": 1
+        }
+      }
+    ]
+  },
+  "無灯火運転": {
+    "id": "無灯火運転",
+    "title": "無灯火運転で捕まる",
+    "description": "自転車の無灯火で警察に止められた。",
+    "category": "ランダム",
+    "choices": [
+      {
+        "id": "無灯火運転A",
+        "label": "反省する",
+        "effects": {
+          "money": -1
+        }
+      }
+    ]
+  }
+}

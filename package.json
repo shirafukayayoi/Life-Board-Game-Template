@@ -8,6 +8,7 @@
     "dev:server": "node server/index.js",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "events:check": "node scripts/validate-events.mjs",
     "start": "node server/index.js",
     "preview": "vite preview"
   },
