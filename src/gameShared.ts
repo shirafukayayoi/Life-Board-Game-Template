@@ -326,9 +326,9 @@ export function clampExperience(key: ExperienceKey, value: number): number {
 }
 
 // ─── Dice → Squares Moved ─────────────────────────────────────────
-/** Dice roll 1-3 = 1 square, 4-6 = 2 squares */
+/** Dice roll 1-3, advance by the same number */
 export function diceToSquares(roll: number): number {
-  return roll <= 3 ? 1 : 2;
+  return roll;
 }
 
 // ─── Credit Checkpoints ───────────────────────────────────────────

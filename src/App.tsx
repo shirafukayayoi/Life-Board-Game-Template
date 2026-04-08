@@ -43,9 +43,10 @@ function App() {
   );
 
   const currentPlayer = useMemo(() => {
-    if (state.players.length === 0) return undefined;
-    return state.players[state.turnIndex % state.players.length];
-  }, [state.players, state.turnIndex]);
+    if (state.players.length === 0 || state.turnOrder.length === 0) return undefined;
+    const currentId = state.turnOrder[state.turnIndex % state.turnOrder.length];
+    return state.players.find((p) => p.id === currentId);
+  }, [state.players, state.turnIndex, state.turnOrder]);
 
   useEffect(() => {
     return () => {
@@ -121,8 +122,8 @@ function App() {
 
   const startGame = () => {
     if (!clientId) return;
-    if (state.players.length < 2) {
-      setStatus("2人以上の参加者が必要です");
+    if (state.players.length < 1) {
+      setStatus("参加者が必要です");
       return;
     }
     sendMessage({ type: "start_game" });
@@ -130,6 +131,36 @@ function App() {
 
   const openDisplay = () => {
     window.open(displayUrl, "_blank");
+  };
+
+  const controllerPlayUrl = useMemo(() => {
+    const hostBase = primaryHostUrl || window.location.origin;
+    return `${hostBase}/controller-play.html?host=${encodeURIComponent(hostBase)}`;
+  }, [primaryHostUrl]);
+
+  const openDebugAll = () => {
+    const hostBase = primaryHostUrl || window.location.origin;
+    // Open display
+    window.open(displayUrl, "clg-display", "width=1280,height=720");
+    // Open 2 controller tabs for testing
+    for (let i = 0; i < 2; i++) {
+      setTimeout(() => {
+        window.open(
+          `${hostBase}/controller.html?host=${encodeURIComponent(hostBase)}`,
+          `clg-controller-${i}`,
+          "width=400,height=750"
+        );
+      }, 300 * (i + 1));
+    }
+  };
+
+  const openOneController = () => {
+    const hostBase = primaryHostUrl || window.location.origin;
+    window.open(
+      `${hostBase}/controller.html?host=${encodeURIComponent(hostBase)}`,
+      "_blank",
+      "width=400,height=750"
+    );
   };
 
   const isInGame = state.phase !== "lobby";
@@ -262,10 +293,10 @@ function App() {
           <div className="actions">
             <button
               onClick={startGame}
-              disabled={state.players.length < 2}
+              disabled={state.players.length < 1}
             >
               ゲームを開始！
-              {state.players.length < 2 && " (2人以上必要)"}
+              {state.players.length < 1 && " (参加者が必要)"}
             </button>
             <button className="ghost" onClick={openDisplay}>
               ディスプレイを開く
@@ -280,7 +311,46 @@ function App() {
             <button className="ghost" onClick={openDisplay}>
               ディスプレイを開く
             </button>
+            <button className="ghost" onClick={openOneController}>
+              コントローラーを追加
+            </button>
           </div>
+        </section>
+      )}
+
+      {/* ── Debug Panel ──────────────────────────────────────────── */}
+      {clientId && (
+        <section className="panel" style={{ borderLeft: "3px solid var(--year-2)" }}>
+          <h2>デバッグモード（PC1台でテスト）</h2>
+          <p style={{ fontSize: 14, color: "var(--muted)", margin: "0 0 12px" }}>
+            全画面を別ウィンドウで開きます。コントローラーで名前を入れて参加してください。
+          </p>
+          <div className="actions">
+            <button onClick={openDebugAll} style={{ background: "var(--year-2)" }}>
+              全画面を一括オープン（Display + Controller ×2）
+            </button>
+            <button className="ghost" onClick={openOneController}>
+              コントローラーを1つ追加
+            </button>
+            <button className="ghost" onClick={openDisplay}>
+              ディスプレイだけ開く
+            </button>
+          </div>
+          {isInGame && controllerPlayUrl && (
+            <div style={{ marginTop: 12 }}>
+              <p style={{ fontSize: 13, color: "var(--muted)" }}>
+                ゲーム中のコントローラー直リンク:
+              </p>
+              <a
+                href={controllerPlayUrl}
+                target="_blank"
+                rel="noopener"
+                style={{ fontSize: 13, wordBreak: "break-all" }}
+              >
+                {controllerPlayUrl}
+              </a>
+            </div>
+          )}
         </section>
       )}
     </div>

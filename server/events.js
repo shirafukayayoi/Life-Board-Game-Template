@@ -226,10 +226,25 @@ export const EVENTS = {
 
   "9": {
     id: "9",
-    title: "分岐点：サークル活動",
-    description: "サークル・部活での経験が道を分ける。団体に所属しているか、自分の道を行くか。",
+    title: "分岐点：課外活動の道",
+    description: "これまでの活動が道を分ける。どちらの道を進む？",
     category: "分岐",
-    choices: [],
+    choices: [
+      {
+        id: "9-A",
+        label: "団体活動ルート（サークル・部活寄りの道）",
+        description: "仲間と一緒に活動を深める",
+        effects: {},
+        branchRoute: "9A-1",
+      },
+      {
+        id: "9-B",
+        label: "ソロ活動ルート（自分の時間を大事にする道）",
+        description: "一人の時間や地域活動を活かす",
+        effects: {},
+        branchRoute: "9B-1",
+      },
+    ],
   },
 
   // ─── Branch 1: Route A (circle / team) ─────────────────────────
@@ -604,10 +619,34 @@ export const EVENTS = {
 
   "17": {
     id: "17",
-    title: "留学・キャリア・探索",
-    description: "3年目。将来が気になり始めた。知性が高ければ留学、労働耐性があればキャリア、それ以外は探索の道へ。",
+    title: "分岐点：将来への投資",
+    description: "3年目。将来が気になり始めた。どの道に進む？",
     category: "分岐",
-    choices: [],
+    choices: [
+      {
+        id: "17-A",
+        label: "留学ルート（海外で学ぶ）",
+        description: "知性と行動力が大きく伸びる。お金と時間は覚悟",
+        effects: {},
+        condition: { minStats: { intellect: 4 } },
+        branchRoute: "17A-1",
+      },
+      {
+        id: "17-B",
+        label: "キャリアルート（インターン・就活準備）",
+        description: "労働耐性と人脈を積む実践の道",
+        effects: {},
+        condition: { minStats: { work_tolerance: 3 } },
+        branchRoute: "17B-1",
+      },
+      {
+        id: "17-C",
+        label: "探索ルート（自分探し・挑戦）",
+        description: "何かを変えたい。自由に動く",
+        effects: {},
+        branchRoute: "17C-1",
+      },
+    ],
   },
 
   // ─── Branch 2: Route A (Study Abroad) ──────────────────────────
@@ -1053,10 +1092,26 @@ export const EVENTS = {
 
   "26": {
     id: "26",
-    title: "卒論 / 就活 / 進学",
-    description: "4年の岐路。行動力が高く、知性か人脈があれば挑戦の道が開ける。それ以外は就活メインの安全な道へ。",
+    title: "分岐点：進路を決める",
+    description: "4年の岐路。安定の就活か、挑戦の道か。",
     category: "分岐",
-    choices: [],
+    choices: [
+      {
+        id: "26-A",
+        label: "安全ルート（就活メイン）",
+        description: "堅実に内定を目指す王道コース",
+        effects: {},
+        branchRoute: "26A-1",
+      },
+      {
+        id: "26-B",
+        label: "挑戦ルート（起業・院進・独自路線）",
+        description: "普通の就活には収まらない道",
+        effects: {},
+        condition: { minStats: { action_power: 6 } },
+        branchRoute: "26B-1",
+      },
+    ],
   },
 
   // ─── Branch 3: Route A (Safe Path) ────────────────────────────

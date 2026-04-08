@@ -576,8 +576,12 @@ function ControllerPlayPage() {
   const [confirmChoice, setConfirmChoice] = useState<string | null>(null);
   const [rolling, setRolling] = useState(false);
   const [showStatChanges, setShowStatChanges] = useState(false);
+  const [myDiceResult, setMyDiceResult] = useState<{ value: number; squares: number } | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const clientIdRef = useRef<string | null>(clientId);
+  clientIdRef.current = clientId;
+  const stateRef = useRef<GameState>(state);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hostUrl = useMemo(() => {
@@ -597,9 +601,10 @@ function ControllerPlayPage() {
   }, [clientId, state.players]);
 
   const currentTurnPlayer = useMemo(() => {
-    if (state.players.length === 0) return undefined;
-    return state.players[state.turnIndex % state.players.length];
-  }, [state.players, state.turnIndex]);
+    if (state.turnOrder.length === 0 || state.players.length === 0) return undefined;
+    const currentId = state.turnOrder[state.turnIndex % state.turnOrder.length];
+    return state.players.find((p) => p.id === currentId);
+  }, [state.players, state.turnIndex, state.turnOrder]);
 
   const isMyTurn = useMemo(
     () => !!clientId && currentTurnPlayer?.id === clientId,
@@ -656,8 +661,24 @@ function ControllerPlayPage() {
           setStatus("接続済み");
           break;
 
-        case "state":
+        case "state": {
+          const prev = stateRef.current;
           setState(msg.state);
+          stateRef.current = msg.state;
+
+          // Detect my dice roll result
+          if (
+            msg.state.lastRoll &&
+            msg.state.lastRoll.playerId === clientIdRef.current &&
+            (!prev.lastRoll || prev.lastRoll.playerId !== clientIdRef.current || prev.phase === "rolling")
+          ) {
+            setMyDiceResult({
+              value: msg.state.lastRoll.value,
+              squares: msg.state.lastRoll.squaresAdvanced,
+            });
+            setRolling(false);
+          }
+
           // Clear event if phase changed away from choosing
           if (
             msg.state.phase !== "choosing" &&
@@ -667,19 +688,31 @@ function ControllerPlayPage() {
             setAvailableChoiceIds([]);
             setEventTargetPlayerId(null);
           }
+          // When it's a new turn (rolling phase, no lastRoll), clear dice result
+          if (msg.state.phase === "rolling" && !msg.state.lastRoll) {
+            setMyDiceResult(null);
+          }
           // Don't clear animation state if we're currently showing stat changes
-          // The animation timer will clean up after 2 seconds
           if (!showStatChanges) {
             setLastChoiceResult(null);
           }
           break;
+        }
 
-        case "show_event":
-          setCurrentEvent(msg.event);
-          setAvailableChoiceIds(msg.availableChoiceIds);
-          setEventTargetPlayerId(msg.playerId);
+        case "show_event": {
           setRolling(false);
+          // If this event is for me and I just rolled, delay showing
+          // the event so the dice result is visible for 1.5 seconds
+          const isForMe = msg.playerId === clientIdRef.current;
+          const delay = isForMe ? 1500 : 0;
+          setTimeout(() => {
+            setMyDiceResult(null);
+            setCurrentEvent(msg.event);
+            setAvailableChoiceIds(msg.availableChoiceIds);
+            setEventTargetPlayerId(msg.playerId);
+          }, delay);
           break;
+        }
 
         case "choice_result":
           setLastChoiceResult(msg.result);
@@ -761,12 +794,11 @@ function ControllerPlayPage() {
     if (gameResults || state.phase === "result") return "result";
     if (showStatChanges && lastChoiceResult) return "animating";
     if (currentEvent && eventTargetPlayerId === clientId) return "choosing";
-    if (isMyTurn && state.phase === "rolling" && state.lastRoll) return "dice_result";
+    if (myDiceResult && !currentEvent) return "dice_result";
     if (isMyTurn && state.phase === "rolling") return "rolling";
     return "waiting";
   }, [
     state.phase,
-    state.lastRoll,
     isMyTurn,
     currentEvent,
     eventTargetPlayerId,
@@ -774,6 +806,7 @@ function ControllerPlayPage() {
     lastChoiceResult,
     showStatChanges,
     gameResults,
+    myDiceResult,
   ]);
 
   // ─── Render helpers ─────────────────────────────────────────
@@ -814,16 +847,15 @@ function ControllerPlayPage() {
   );
 
   const renderDiceResult = () => {
-    const roll = state.lastRoll;
-    if (!roll) return null;
+    if (!myDiceResult) return null;
     return (
       <div style={S.card}>
         <div style={S.diceResult}>
           <div style={{ ...S.diceNumber, color: accentColor }}>
-            {roll.value}
+            {myDiceResult.value}
           </div>
           <div style={S.diceAdvanced}>
-            {roll.squaresAdvanced}マス進む
+            {myDiceResult.squares}マス進む
           </div>
         </div>
       </div>

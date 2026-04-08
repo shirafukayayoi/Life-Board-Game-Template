@@ -56,7 +56,7 @@ function clampExperience(key, value) {
 }
 
 function diceToSquares(roll) {
-  return roll <= 3 ? 1 : 2;
+  return roll;
 }
 
 function getRoundInfo(round) {
@@ -352,6 +352,9 @@ function movePlayer(player, squaresToMove) {
     const nextId = getNextSquareId(currentPos, player);
     if (nextId === null) break; // Already at goal
     currentPos = nextId;
+    // Stop at branch points — player must choose a route
+    const square = BOARD[currentPos];
+    if (square && square.type === "branch_point") break;
   }
   player.position = currentPos;
 }
@@ -361,8 +364,15 @@ function movePlayer(player, squaresToMove) {
  * Sets state phase to "choosing" and broadcasts show_event.
  */
 function presentEvent(player) {
-  // Check threshold events first
-  let event = checkThresholdEvents(player);
+  // Branch points always show their own event (route selection)
+  const square = BOARD[player.position];
+  const isBranchPoint = square && square.type === "branch_point";
+
+  // Check threshold events first (but not at branch points)
+  let event = null;
+  if (!isBranchPoint) {
+    event = checkThresholdEvents(player);
+  }
 
   if (!event) {
     event = getEventForPosition(player.position);
@@ -465,6 +475,11 @@ function processChoice(player, choiceId) {
 
   broadcast({ type: "choice_result", result });
 
+  // If choice has a branchRoute, move player to that branch start
+  if (choice.branchRoute) {
+    player.position = choice.branchRoute;
+  }
+
   // Advance turn
   advanceTurn();
 }
@@ -507,6 +522,7 @@ function advanceTurn() {
 
     state.turnIndex = nextIndex;
     state.phase = "rolling";
+    state.lastRoll = null;
     state.lastChoiceResult = null;
     broadcastState();
   }
@@ -679,7 +695,7 @@ wss.on("connection", (socket) => {
       if (!currentPlayer.online) return;
 
       // Roll dice
-      const roll = Math.floor(Math.random() * 6) + 1;
+      const roll = Math.floor(Math.random() * 3) + 1;
       const squaresToMove = diceToSquares(roll);
 
       // Move player

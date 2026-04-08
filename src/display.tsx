@@ -76,6 +76,9 @@ function DisplayPage() {
   const [choiceResult, setChoiceResult] = useState<ChoiceResult | null>(null);
   const [eventFading, setEventFading] = useState(false);
 
+  // Dice roll overlay
+  const [diceRoll, setDiceRoll] = useState<{ name: string; value: number; squares: number } | null>(null);
+
   // Round-end banner
   const [roundEndInfo, setRoundEndInfo] = useState<RoundInfo | null>(null);
 
@@ -93,8 +96,9 @@ function DisplayPage() {
   // Current player info
   const currentPlayer = useMemo(() => {
     if (state.players.length === 0) return undefined;
-    return state.players[state.turnIndex % state.players.length];
-  }, [state.players, state.turnIndex]);
+    const currentId = state.turnOrder[state.turnIndex % state.turnOrder.length];
+    return state.players.find((p) => p.id === currentId);
+  }, [state.players, state.turnIndex, state.turnOrder]);
 
   const roundInfo = useMemo(
     () => getRoundInfo(state.currentRound),
@@ -141,15 +145,27 @@ function DisplayPage() {
 
       switch (message.type) {
         case "state":
+          // Detect new dice roll
+          if (message.state.lastRoll && message.state.phase === "choosing") {
+            setDiceRoll({
+              name: message.state.lastRoll.playerName,
+              value: message.state.lastRoll.value,
+              squares: message.state.lastRoll.squaresAdvanced,
+            });
+          }
           setState(message.state);
           break;
 
         case "show_event":
-          setShowEvent(message.event);
-          setEventPlayerId(message.playerId);
-          setEventAvailableIds(message.availableChoiceIds);
-          setChoiceResult(null);
-          setEventFading(false);
+          // Delay event display so dice result is visible
+          setTimeout(() => {
+            setDiceRoll(null);
+            setShowEvent(message.event);
+            setEventPlayerId(message.playerId);
+            setEventAvailableIds(message.availableChoiceIds);
+            setChoiceResult(null);
+            setEventFading(false);
+          }, 1500);
           break;
 
         case "choice_result":
@@ -402,6 +418,23 @@ function DisplayPage() {
           )}
         </div>
       </div>
+
+      {/* ── Dice Roll Overlay ────────────────────────────────────── */}
+      {diceRoll && !showEvent && (
+        <div className="round-end-banner">
+          <div className="round-end-card" style={{ padding: "32px 48px" }}>
+            <div style={{ fontSize: 14, color: "#a0a0b0", marginBottom: 8 }}>
+              {diceRoll.name} がサイコロを振った
+            </div>
+            <div style={{ fontSize: 72, fontWeight: 800, lineHeight: 1 }}>
+              {diceRoll.value}
+            </div>
+            <div style={{ fontSize: 18, color: "#a0a0b0", marginTop: 8 }}>
+              {diceRoll.squares}マス進む
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Event Overlay ─────────────────────────────────────────── */}
       {showEvent && (

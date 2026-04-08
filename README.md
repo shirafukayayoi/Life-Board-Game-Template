@@ -1,73 +1,62 @@
-# React + TypeScript + Vite
+# Campus Life Game
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+大学4年間をどう過ごすかを競う、マルチプレイ対応のキャンパス人生ゲーム。
 
-Currently, two official plugins are available:
+ホストPCが進行を管理し、参加者はスマホからQRコードで参加。共有モニターに盤面を映して遊びます。
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 起動方法
 
-## React Compiler
+### 必要なもの
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Node.js 20以上
+- npm
 
-## Expanding the ESLint configuration
+### インストール
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 本番モード（ビルド + サーバー起動）
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
+npm run start
 ```
+
+http://localhost:4173 をブラウザで開く。
+
+### 開発モード（ホットリロード付き）
+
+ターミナルを2つ開いて：
+
+```bash
+# ターミナル1: フロントエンド（変更即反映）
+npm run dev
+
+# ターミナル2: ゲームサーバー
+npm run dev:server
+```
+
+- Vite dev server: http://localhost:5173
+- ゲームサーバー: http://localhost:4173
+
+## 遊び方
+
+1. ホスト画面（http://localhost:4173）を開いて「ホストとして開始」
+2. 表示されるQRコードを参加者がスマホで読み取って参加
+3. 「ディスプレイを開く」でモニター用の盤面表示画面を開く
+4. 参加者が揃ったら「ゲームを開始！」
+5. 各プレイヤーが順番にサイコロを振り、イベントの選択肢を選ぶ
+6. 16ラウンド（大学4年間）を終えると結果発表
+
+### デバッグモード（PC1台でテスト）
+
+ホスト接続後に表示される「デバッグモード」パネルから「全画面を一括オープン」を押すと、ディスプレイ＋コントローラー×2が別ウィンドウで開きます。
+
+## 技術スタック
+
+- **フロントエンド**: React 19 + TypeScript + Vite
+- **サーバー**: Express + WebSocket (ws)
+- **通信**: WebSocket によるリアルタイム同期
+- **その他**: qrcode.react, recharts, canvas-confetti
