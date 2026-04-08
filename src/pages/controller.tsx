@@ -15,7 +15,7 @@ import {
   getRoundInfo,
   wsUrlFromInput,
   defaultGameState,
-} from "./gameShared";
+} from "../domain/gameShared";
 
 // ─── Styles ──────────────────────────────────────────────────────
 const S = {

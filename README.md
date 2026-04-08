@@ -60,3 +60,36 @@ npm run dev:server
 - **サーバー**: Express + WebSocket (ws)
 - **通信**: WebSocket によるリアルタイム同期
 - **その他**: qrcode.react, recharts, canvas-confetti
+
+## ディレクトリ構成
+
+```text
+.
+├─ docs/                # 仕様書・ゲームデザイン
+├─ public/              # 静的アセット
+├─ server/              # Express + WebSocket サーバー
+│  ├─ index.js          # ゲーム進行のメイン
+│  ├─ board.js          # 盤面遷移ロジック
+│  ├─ events.js         # イベント定義
+│  └─ endings.js        # スコアとエンディング判定
+├─ src/                 # React クライアント
+│  ├─ pages/
+│  │  ├─ host.tsx           # ホスト画面
+│  │  ├─ controller.tsx     # 参加待機画面
+│  │  ├─ controllerPlay.tsx # プレイ画面
+│  │  └─ display.tsx        # 共有ディスプレイ画面
+│  ├─ components/
+│  │  └─ Board.tsx          # 盤面表示コンポーネント
+│  ├─ domain/
+│  │  ├─ boardData.ts       # 盤面データ
+│  │  ├─ events.ts          # イベント定義
+│  │  ├─ endings.ts         # エンディング定義
+│  │  └─ gameShared.ts      # 共通型・共通ロジック
+│  ├─ main.tsx              # ホスト画面エントリ
+│  ├─ App.css
+│  └─ index.css
+├─ index.html           # ホストエントリ
+├─ controller.html      # 参加待機エントリ
+├─ controller-play.html # プレイエントリ
+└─ display.html         # ディスプレイエントリ
+```

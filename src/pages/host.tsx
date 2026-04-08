@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
-import "./App.css";
+import "../App.css";
 import {
   choosePrimaryHostUrl,
   colorForPlayer,
@@ -10,7 +10,7 @@ import {
   type ServerMessage,
   defaultGameState,
   wsUrlFromInput,
-} from "./gameShared";
+} from "../domain/gameShared";
 
 function App() {
   const [name, setName] = useState("Host");

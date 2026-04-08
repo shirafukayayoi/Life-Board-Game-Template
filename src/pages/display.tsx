@@ -1,9 +1,9 @@
 import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import confetti from "canvas-confetti";
-import { Board } from "./Board";
-import "./index.css";
-import "./App.css";
+import { Board } from "../components/Board";
+import "../index.css";
+import "../App.css";
 import {
   colorForPlayer,
   getRoundInfo,
@@ -17,7 +17,7 @@ import {
   type StatEffects,
   defaultGameState,
   wsUrlFromInput,
-} from "./gameShared";
+} from "../domain/gameShared";
 
 // ─── Year color helper ───────────────────────────────────────────
 const YEAR_COLORS: Record<number, string> = {

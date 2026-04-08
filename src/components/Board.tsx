@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { BOARD, BOARD_POSITIONS, MAIN_TRACK_ORDER } from "./boardData";
-import { colorForPlayer, type Player } from "./gameShared";
+import { BOARD, BOARD_POSITIONS, MAIN_TRACK_ORDER } from "../domain/boardData";
+import { colorForPlayer, type Player } from "../domain/gameShared";
 
 type Props = {
   players: Player[];

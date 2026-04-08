@@ -35,7 +35,7 @@ import {
   getRoundInfo,
   wsUrlFromInput,
   defaultGameState,
-} from "./gameShared";
+} from "../domain/gameShared";
 
 // ─── Flag display helpers ────────────────────────────────────────
 const FLAG_DISPLAY: Record<string, { emoji: string; label: string }> = {
