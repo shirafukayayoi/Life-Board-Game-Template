@@ -1,7 +1,7 @@
 import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import confetti from "canvas-confetti";
-import { Board } from "../components/Board";
+import { MountainBoard, type CameraMode } from "../components/MountainBoard";
 import "../index.css";
 import "../App.css";
 import {
@@ -86,6 +86,9 @@ export function DisplayPage() {
   const [gameResults, setGameResults] = useState<PlayerResult[] | null>(null);
   const [showResultContent, setShowResultContent] = useState(false);
 
+  // Camera mode (auto with manual override)
+  const [cameraOverride, setCameraOverride] = useState<CameraMode | null>(null);
+
   const wsRef = useRef<WebSocket | null>(null);
 
   const hostUrl = useMemo(() => {
@@ -106,6 +109,21 @@ export function DisplayPage() {
     () => getRoundInfo(state.currentRound),
     [state.currentRound],
   );
+
+  // Auto-derive camera mode from game phase
+  const autoCameraMode: CameraMode = useMemo(() => {
+    if (state.phase === "lobby") return "cinema";
+    if (
+      currentPlayer &&
+      (state.phase === "rolling" ||
+        state.phase === "choosing" ||
+        state.phase === "animating")
+    ) {
+      return "follow";
+    }
+    return "overview";
+  }, [state.phase, currentPlayer]);
+  const cameraMode = cameraOverride ?? autoCameraMode;
 
   // Fade out event overlay after choice result
   const fadeOutEvent = useCallback(() => {
@@ -337,11 +355,46 @@ export function DisplayPage() {
         <div
           className={`display-board-area ${hasEventOverlay ? "display-board-area--dimmed" : ""}`}
         >
-          <Board
-            players={state.players}
-            currentPlayerId={currentPlayer?.id}
-            highlightSquareId={highlightSquareId}
-          />
+          <div className="mountain-canvas-wrap">
+            <MountainBoard
+              players={state.players}
+              currentPlayerId={currentPlayer?.id}
+              highlightSquareId={highlightSquareId}
+              cameraMode={cameraMode}
+            />
+          </div>
+
+          {/* Camera mode toggle */}
+          <div className="camera-toolbar">
+            {(["overview", "follow", "cinema"] as CameraMode[]).map((m) => {
+              const active = cameraMode === m;
+              const label =
+                m === "overview" ? "俯瞰" : m === "follow" ? "追従" : "シネマ";
+              return (
+                <button
+                  key={m}
+                  className={`camera-toolbar__btn ${active ? "camera-toolbar__btn--active" : ""}`}
+                  onClick={() =>
+                    setCameraOverride((cur) =>
+                      cur === m ? null : m,
+                    )
+                  }
+                  title={cameraOverride === m ? "自動に戻す" : `カメラ: ${label}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+            {cameraOverride && (
+              <button
+                className="camera-toolbar__btn camera-toolbar__btn--reset"
+                onClick={() => setCameraOverride(null)}
+                title="自動切替に戻す"
+              >
+                自動
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Side panel */}

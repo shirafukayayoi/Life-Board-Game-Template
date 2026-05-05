@@ -129,6 +129,12 @@ function App() {
     sendMessage({ type: "start_game" });
   };
 
+  const resetGame = () => {
+    if (!clientId) return;
+    if (!window.confirm("ゲームをリセットしてロビーに戻します。よろしいですか？")) return;
+    sendMessage({ type: "reset_game" });
+  };
+
   const openDisplay = () => {
     window.open(displayUrl, "_blank");
   };
@@ -313,6 +319,12 @@ function App() {
             </button>
             <button className="ghost" onClick={openOneController}>
               コントローラーを追加
+            </button>
+            <button
+              onClick={resetGame}
+              style={{ background: "#dc2626", color: "#fff" }}
+            >
+              ゲームをリセット
             </button>
           </div>
         </section>

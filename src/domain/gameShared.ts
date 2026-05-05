@@ -251,6 +251,7 @@ export type ServerMessage =
 export type ClientMessage =
   | { type: "join"; name: string; role: Role; clientId?: string }
   | { type: "start_game" }
+  | { type: "reset_game" }
   | { type: "player_roll" }
   | { type: "player_choice"; choiceId: string }
   | { type: "request_state" };

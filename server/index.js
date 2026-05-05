@@ -684,6 +684,21 @@ wss.on("connection", (socket) => {
       return;
     }
 
+    // ─── reset_game ────────────────────────────────────────────
+    if (payload.type === "reset_game") {
+      if (client.role !== "host" || client.id !== hostId) return;
+
+      // Drop all players & game state, return to lobby
+      state = defaultGameState();
+      broadcast({
+        type: "system",
+        message: "ホストがゲームをリセットしました。ロビーに戻ります。",
+      });
+      broadcastNavigate("/controller.html", ["controller"]);
+      broadcastState();
+      return;
+    }
+
     // ─── player_roll ───────────────────────────────────────────
     if (payload.type === "player_roll") {
       if (client.role !== "controller") return;
