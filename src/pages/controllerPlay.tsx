@@ -20,6 +20,7 @@ import {
   type ServerMessage,
   type GameState,
   type GameEvent,
+  type EventChoice,
   type ChoiceResult,
   type PlayerResult,
   type Player,
@@ -392,7 +393,8 @@ styleTag.textContent = `
 document.head.appendChild(styleTag);
 
 // ─── Helper: render stat effects as badges ──────────────────────
-export function EffectBadges({ effects }: { effects: StatEffects }) {
+export function EffectBadges({ effects }: { effects?: StatEffects }) {
+  if (!effects) return null;
   const allKeys = [...RESOURCE_KEYS, ...EXPERIENCE_KEYS] as string[];
   const labels: Record<string, string> = { ...RESOURCE_LABELS, ...EXPERIENCE_LABELS };
   const entries = allKeys
@@ -411,6 +413,38 @@ export function EffectBadges({ effects }: { effects: StatEffects }) {
           {e.value} {e.label}
         </span>
       ))}
+    </div>
+  );
+}
+
+export function ChoicePreview({ choice }: { choice: EventChoice }) {
+  if (!choice.preview) return <EffectBadges effects={choice.effects} />;
+  const riskLabel: Record<string, string> = {
+    low: "低",
+    medium: "中",
+    high: "高",
+    unknown: "不明",
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {choice.tone && <span style={S.effectBadge(true)}>{choice.tone}</span>}
+        {choice.preview.gain.map((item) => (
+          <span key={`gain-${item}`} style={S.effectBadge(true)}>
+            得られそう: {item}
+          </span>
+        ))}
+        {choice.preview.cost.map((item) => (
+          <span key={`cost-${item}`} style={S.effectBadge(false)}>
+            失いそう: {item}
+          </span>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: "#9ca3af" }}>
+        リスク: {riskLabel[choice.preview.risk]}
+        {choice.storyTags?.length ? ` / ${choice.storyTags.join("・")}` : ""}
+      </div>
     </div>
   );
 }
@@ -613,6 +647,11 @@ export function ControllerPlayPage() {
     [clientId, currentTurnPlayer]
   );
 
+  const myLifeChoiceSubmitted = useMemo(
+    () => Boolean(clientId && state.pendingLifeChoices?.[clientId]),
+    [clientId, state.pendingLifeChoices]
+  );
+
   const roundInfo = useMemo(
     () => getRoundInfo(state.currentRound),
     [state.currentRound]
@@ -716,13 +755,31 @@ export function ControllerPlayPage() {
           break;
         }
 
-        case "choice_result":
+        case "show_life_event": {
+          setRolling(false);
+          setMyDiceResult(null);
+          setCurrentEvent(msg.event);
+          setAvailableChoiceIds(msg.availableChoiceIds);
+          setEventTargetPlayerId(clientIdRef.current);
+          break;
+        }
+
+        case "choice_result": {
+          const isLifeMap = stateRef.current.mode === "life_map";
+          const isMine = msg.result.playerId === clientIdRef.current;
+          if (isLifeMap && !isMine) break;
+
           setLastChoiceResult(msg.result);
           setCurrentEvent(null);
           setConfirmChoice(null);
-          setShowStatChanges(true);
-          setTimeout(() => setShowStatChanges(false), 2000);
+          if (isLifeMap) {
+            setShowStatChanges(false);
+          } else {
+            setShowStatChanges(true);
+            setTimeout(() => setShowStatChanges(false), 2000);
+          }
           break;
+        }
 
         case "game_result":
           setGameResults(msg.results);
@@ -818,7 +875,11 @@ export function ControllerPlayPage() {
       <div style={S.waitingMsg(true)}>
         {state.phase === "lobby"
           ? "ゲーム開始を待っています..."
-          : `${currentTurnPlayer?.name ?? "..."}のターン中...`}
+          : state.mode === "life_map" && state.phase === "choosing"
+            ? myLifeChoiceSubmitted
+              ? "選択済み。ほかの人の選択を待っています..."
+              : "みんなが同時に選択中..."
+            : `${currentTurnPlayer?.name ?? "..."}のターン中...`}
       </div>
     </div>
   );
@@ -898,7 +959,7 @@ export function ControllerPlayPage() {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={S.choiceLabel}>{choice.label}</div>
-                <EffectBadges effects={choice.effects} />
+                <ChoicePreview choice={choice} />
                 {!isAvailable && choice.condition && (
                   <div style={S.conditionText}>
                     条件:{" "}
@@ -983,12 +1044,22 @@ export function ControllerPlayPage() {
 
     return (
       <div style={S.card}>
-        <div style={S.resultEmoji}>{myResult.ending.emoji}</div>
-        <div style={S.resultTitle}>{myResult.ending.title}</div>
-        <div style={S.resultDesc}>{myResult.ending.description}</div>
-        <div style={S.resultRank}>
-          {myResult.rank}位
+        <div style={S.resultEmoji}>
+          {myResult.academicStatus ? "\u{1F393}" : myResult.ending?.emoji}
         </div>
+        <div style={S.resultTitle}>
+          {myResult.academicStatus
+            ? myResult.storyAward?.title
+            : myResult.ending?.title}
+        </div>
+        <div style={S.resultDesc}>
+          {myResult.summary ?? myResult.ending?.description}
+        </div>
+        {myResult.rank !== undefined && (
+          <div style={S.resultRank}>
+            {myResult.rank}位
+          </div>
+        )}
 
         <div
           style={{
@@ -998,7 +1069,9 @@ export function ControllerPlayPage() {
             marginBottom: 12,
           }}
         >
-          スコア: {myResult.score}
+          {myResult.academicStatus
+            ? `${myResult.lifeArchetype?.title} / 学業: ${myResult.academicStatus.title}`
+            : `スコア: ${myResult.score}`}
         </div>
 
         {/* Radar chart */}
@@ -1047,7 +1120,7 @@ export function ControllerPlayPage() {
         <div style={S.confirmDialog} onClick={(e) => e.stopPropagation()}>
           <div style={S.confirmTitle}>この選択でいい?</div>
           <div style={{ fontSize: 15, marginBottom: 16 }}>{choice.label}</div>
-          <EffectBadges effects={choice.effects} />
+          <ChoicePreview choice={choice} />
           <div style={{ ...S.confirmBtns, marginTop: 20 }}>
             <button
               style={S.confirmBtn(false)}

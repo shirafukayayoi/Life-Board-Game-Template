@@ -9,6 +9,18 @@ import { WebSocketServer } from "ws";
 import { EVENTS, THRESHOLD_EVENTS } from "./events.js";
 import { BOARD, getNextSquareId, meetsCondition } from "./board.js";
 import { generateResults } from "./endings.js";
+import { TIMELINE_EVENTS, getPublicTimelineEvent } from "./timelineEvents.js";
+import {
+  buildLifeMap,
+  getPublicLifeMapSquares,
+  getRouteSquareId,
+  getSeasonHubSquareId,
+} from "./lifeMap.js";
+import {
+  applyTimelineChoice,
+  createTimelinePlayer,
+  generateTimelineResults,
+} from "./timelineGame.js";
 
 // ═══════════════════════════════════════════════════════════════════
 //  Constants & Helpers (mirrored from gameShared.ts)
@@ -44,6 +56,8 @@ const CREDIT_CHECKPOINTS = {
 
 const SEASON_ORDER = ["spring", "summer", "autumn", "winter"];
 const SEASON_LABELS = { spring: "春", summer: "夏", autumn: "秋", winter: "冬" };
+const LIFE_MAP = buildLifeMap(TIMELINE_EVENTS);
+const PUBLIC_LIFE_MAP_SQUARES = getPublicLifeMapSquares(LIFE_MAP);
 
 function clampResource(key, value) {
   const r = RESOURCE_RANGES[key];
@@ -95,6 +109,7 @@ function defaultFlags() {
 
 function defaultGameState() {
   return {
+    mode: "board",
     phase: "lobby",
     currentRound: 1,
     players: [],
@@ -107,6 +122,12 @@ function defaultGameState() {
     lastChoiceResult: null,
     /** Track which players already had a threshold event this round */
     thresholdFiredThisRound: new Set(),
+    currentSeasonIndex: 0,
+    lifePlayers: [],
+    lifeMapSquares: [],
+    lifePlayerPositions: {},
+    lifePlayerRoutes: {},
+    pendingLifeChoices: {},
   };
 }
 
@@ -332,6 +353,130 @@ function applyPerRoundFlagEffects(player) {
   if (player.flags.teaching_cert) {
     player.resources.time = clampResource("time", player.resources.time - 1);
   }
+}
+
+function getCurrentTimelineEvent() {
+  return TIMELINE_EVENTS[state.currentSeasonIndex] ?? null;
+}
+
+function setLifePlayersAtSquare(squareId) {
+  if (!squareId) return;
+  const nextPositions = { ...state.lifePlayerPositions };
+  for (const lifePlayer of state.lifePlayers) {
+    nextPositions[lifePlayer.id] = squareId;
+  }
+  state.lifePlayerPositions = nextPositions;
+}
+
+function moveLifePlayerToRoute(playerId, event, choice) {
+  const routeSquareId = getRouteSquareId(event, choice);
+  state.lifePlayerPositions = {
+    ...state.lifePlayerPositions,
+    [playerId]: routeSquareId,
+  };
+  const previousRoutes = state.lifePlayerRoutes[playerId] ?? [];
+  if (previousRoutes[previousRoutes.length - 1] === routeSquareId) return;
+  state.lifePlayerRoutes = {
+    ...state.lifePlayerRoutes,
+    [playerId]: [...previousRoutes, routeSquareId],
+  };
+}
+
+function presentTimelineEvent() {
+  const event = getCurrentTimelineEvent();
+  if (!event) {
+    endTimelineGame();
+    return;
+  }
+
+  const publicEvent = getPublicTimelineEvent(event);
+  state.mode = "life_map";
+  state.phase = "choosing";
+  state.currentRound = state.currentSeasonIndex + 1;
+  state.currentEvent = publicEvent;
+  state.availableChoiceIds = publicEvent.choices.map((choice) => choice.id);
+  state.pendingLifeChoices = {};
+  state.lastChoiceResult = null;
+  setLifePlayersAtSquare(getSeasonHubSquareId(event));
+
+  broadcast({
+    type: "show_life_event",
+    event: publicEvent,
+    availableChoiceIds: state.availableChoiceIds,
+  });
+  broadcastState();
+}
+
+function processTimelineChoice(player, choiceId) {
+  const event = getCurrentTimelineEvent();
+  if (!event) return;
+  if (state.pendingLifeChoices[player.id]) return;
+  const choice = event.choices.find((c) => c.id === choiceId);
+  if (!choice) return;
+
+  state.pendingLifeChoices[player.id] = choiceId;
+  moveLifePlayerToRoute(player.id, event, choice);
+
+  const result = {
+    playerId: player.id,
+    playerName: player.name,
+    choiceId: choice.id,
+    choiceLabel: choice.label,
+    effects: {},
+    tone: choice.tone,
+    storyTags: choice.storyTags,
+  };
+  state.lastChoiceResult = result;
+  broadcast({ type: "choice_result", result });
+
+  const activePlayerIds = state.players.filter((p) => p.online).map((p) => p.id);
+  const allDone = activePlayerIds.every((id) => state.pendingLifeChoices[id]);
+  if (!allDone) {
+    broadcastState();
+    return;
+  }
+
+  state.lifePlayers = state.lifePlayers.map((lifePlayer) => {
+    const selectedId = state.pendingLifeChoices[lifePlayer.id];
+    const selectedChoice = event.choices.find((c) => c.id === selectedId);
+    if (!selectedChoice) return lifePlayer;
+    return applyTimelineChoice(lifePlayer, event, selectedChoice);
+  });
+
+  state.currentSeasonIndex += 1;
+  if (state.currentSeasonIndex >= TIMELINE_EVENTS.length) {
+    endTimelineGame();
+    return;
+  }
+  presentTimelineEvent();
+}
+
+function endTimelineGame() {
+  const lifeResults = generateTimelineResults(state.lifePlayers);
+  const results = lifeResults.map((result) => {
+    const player = state.players.find((p) => p.id === result.playerId);
+    return {
+      playerId: result.playerId,
+      playerName: result.playerName,
+      academicStatus: result.academicStatus,
+      lifeArchetype: result.lifeArchetype,
+      storyAward: result.storyAward,
+      summary: result.summary,
+      resources: player?.resources ?? defaultResources(),
+      experience: player?.experience ?? defaultExperience(),
+      flags: player?.flags ?? defaultFlags(),
+      flagHistory: player?.flagHistory ?? [],
+      storyTags: result.storyTags,
+    };
+  });
+
+  state.phase = "result";
+  state.currentEvent = null;
+  state.availableChoiceIds = [];
+  state.lastChoiceResult = null;
+
+  broadcast({ type: "game_result", results });
+  broadcastState();
 }
 
 /**
@@ -659,6 +804,7 @@ wss.on("connection", (socket) => {
       if (state.players.length === 0) return;
 
       // Initialize game state
+      state.mode = "board";
       state.phase = "rolling";
       state.currentRound = 1;
       state.turnOrder = state.players.map((p) => p.id);
@@ -668,6 +814,12 @@ wss.on("connection", (socket) => {
       state.currentEvent = null;
       state.availableChoiceIds = [];
       state.lastChoiceResult = null;
+      state.currentSeasonIndex = 0;
+      state.lifePlayers = [];
+      state.lifeMapSquares = [];
+      state.lifePlayerPositions = {};
+      state.lifePlayerRoutes = {};
+      state.pendingLifeChoices = {};
 
       // Reset all players
       for (const player of state.players) {
@@ -681,6 +833,37 @@ wss.on("connection", (socket) => {
 
       broadcastState();
       broadcastNavigate("/controller-play.html", ["controller"]);
+      return;
+    }
+
+    // ─── start_life_map_game ────────────────────────────────────
+    if (payload.type === "start_life_map_game") {
+      if (client.role !== "host" || client.id !== hostId) return;
+      if (state.players.length === 0) return;
+
+      state.mode = "life_map";
+      state.phase = "choosing";
+      state.currentRound = 1;
+      state.turnOrder = state.players.map((p) => p.id);
+      state.completedTurns = [];
+      state.turnIndex = 0;
+      state.lastRoll = null;
+      state.currentEvent = null;
+      state.availableChoiceIds = [];
+      state.lastChoiceResult = null;
+      state.currentSeasonIndex = 0;
+      state.pendingLifeChoices = {};
+      state.lifePlayers = state.players.map((player) => createTimelinePlayer(player.id, player.name));
+      state.lifeMapSquares = PUBLIC_LIFE_MAP_SQUARES;
+      state.lifePlayerPositions = Object.fromEntries(
+        state.lifePlayers.map((player) => [player.id, LIFE_MAP.startSquareId]),
+      );
+      state.lifePlayerRoutes = Object.fromEntries(
+        state.lifePlayers.map((player) => [player.id, []]),
+      );
+
+      broadcastNavigate("/controller-play.html", ["controller"]);
+      presentTimelineEvent();
       return;
     }
 
@@ -735,10 +918,19 @@ wss.on("connection", (socket) => {
       if (state.phase !== "choosing") return;
 
       const currentPlayer = getCurrentPlayer();
-      if (!currentPlayer || currentPlayer.id !== client.id) return;
+      const timelinePlayer = state.mode === "life_map"
+        ? state.players.find((p) => p.id === client.id)
+        : null;
+      if (state.mode !== "life_map" && (!currentPlayer || currentPlayer.id !== client.id)) return;
+      if (state.mode === "life_map" && !timelinePlayer) return;
 
       const choiceId = payload.choiceId;
       if (!state.availableChoiceIds.includes(choiceId)) return;
+
+      if (state.mode === "life_map") {
+        processTimelineChoice(timelinePlayer, choiceId);
+        return;
+      }
 
       processChoice(currentPlayer, choiceId);
       return;

@@ -23,3 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Local agent and browser verification artifacts
+.claude/
+.playwright-mcp/
+campus-life-*.png
+progress.md

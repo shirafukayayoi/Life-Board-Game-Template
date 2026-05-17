@@ -80,9 +80,16 @@ export interface EventChoice {
   id: string;
   label: string;
   description?: string;
-  effects: StatEffects;
+  effects?: StatEffects;
   flagEffects?: FlagEffects;
   condition?: ChoiceCondition;
+  tone?: string;
+  preview?: {
+    gain: string[];
+    cost: string[];
+    risk: "low" | "medium" | "high" | "unknown";
+  };
+  storyTags?: string[];
   /** Probability of a random bonus/penalty (0-1). Used for gambling-style choices. */
   randomChance?: number;
   randomBonusEffects?: StatEffects;
@@ -99,6 +106,10 @@ export interface GameEvent {
   id: string;
   title: string;
   description: string;
+  year?: 1 | 2 | 3 | 4;
+  season?: Season;
+  label?: string;
+  theme?: string;
   category?: string;
   choices: EventChoice[];
   /** Alternative choice sets based on player flags/stats */
@@ -175,7 +186,74 @@ export function getRoundInfo(round: number): RoundInfo {
 }
 
 // ─── Game State ───────────────────────────────────────────────────
+export type GameMode = "board" | "life_map";
+
 export type GamePhase = "lobby" | "rolling" | "choosing" | "animating" | "result";
+
+export type LifeTraitKey =
+  | "academic"
+  | "stability"
+  | "wellbeing"
+  | "relationships"
+  | "freedom"
+  | "challenge"
+  | "career"
+  | "memory"
+  | "selfhood";
+
+export type LifeTraitStats = Record<LifeTraitKey, number>;
+
+export interface TimelineHistoryEntry {
+  seasonId: string;
+  seasonLabel: string;
+  theme: string;
+  choiceId: string;
+  choiceLabel: string;
+  tone?: string;
+  storyTags: string[];
+}
+
+export interface TimelineLifePlayer {
+  id: string;
+  name: string;
+  traits: LifeTraitStats;
+  storyTags: string[];
+  history: TimelineHistoryEntry[];
+}
+
+export interface LifeMapPreview {
+  gain: string[];
+  cost: string[];
+  risk: "low" | "medium" | "high" | "unknown";
+}
+
+export interface LifeMapSeasonHubSquare {
+  id: string;
+  type: "season_hub";
+  seasonId: string;
+  year: 1 | 2 | 3 | 4;
+  season: Season;
+  label: string;
+  theme: string;
+  description: string;
+  next: string[];
+}
+
+export interface LifeMapRouteSquare {
+  id: string;
+  type: "life_route";
+  seasonId: string;
+  choiceId: string;
+  year: 1 | 2 | 3 | 4;
+  season: Season;
+  label: string;
+  tone?: string;
+  preview: LifeMapPreview;
+  storyTags: string[];
+  next: string[];
+}
+
+export type LifeMapSquare = LifeMapSeasonHubSquare | LifeMapRouteSquare;
 
 export interface LastRoll {
   playerId: string;
@@ -185,6 +263,7 @@ export interface LastRoll {
 }
 
 export interface GameState {
+  mode?: GameMode;
   phase: GamePhase;
   currentRound: number; // 1-16
   players: Player[];
@@ -198,6 +277,12 @@ export interface GameState {
   availableChoiceIds: string[];
   /** Last choice result for animation display */
   lastChoiceResult: ChoiceResult | null;
+  currentSeasonIndex?: number;
+  lifePlayers?: TimelineLifePlayer[];
+  lifeMapSquares?: LifeMapSquare[];
+  lifePlayerPositions?: Record<string, string>;
+  lifePlayerRoutes?: Record<string, string[]>;
+  pendingLifeChoices?: Record<string, string>;
 }
 
 export interface ChoiceResult {
@@ -207,6 +292,8 @@ export interface ChoiceResult {
   choiceLabel: string;
   effects: StatEffects;
   flagEffects?: FlagEffects;
+  tone?: string;
+  storyTags?: string[];
 }
 
 // ─── Ending Types ─────────────────────────────────────────────────
@@ -220,13 +307,18 @@ export interface Ending {
 export interface PlayerResult {
   playerId: string;
   playerName: string;
-  score: number;
-  rank: number;
-  ending: Ending;
+  score?: number;
+  rank?: number;
+  ending?: Ending;
+  academicStatus?: Ending;
+  lifeArchetype?: Ending;
+  storyAward?: Ending;
+  summary?: string;
   resources: ResourceStats;
   experience: ExperienceStats;
   flags: SpecialFlags;
   flagHistory: string[];
+  storyTags?: string[];
 }
 
 // ─── Messages ─────────────────────────────────────────────────────
@@ -242,6 +334,11 @@ export type ServerMessage =
       playerId: string;
     }
   | {
+      type: "show_life_event";
+      event: GameEvent;
+      availableChoiceIds: string[];
+    }
+  | {
       type: "choice_result";
       result: ChoiceResult;
     }
@@ -251,6 +348,7 @@ export type ServerMessage =
 export type ClientMessage =
   | { type: "join"; name: string; role: Role; clientId?: string }
   | { type: "start_game" }
+  | { type: "start_life_map_game" }
   | { type: "reset_game" }
   | { type: "player_roll" }
   | { type: "player_choice"; choiceId: string }
@@ -287,6 +385,7 @@ export function defaultFlags(): SpecialFlags {
 
 export function defaultGameState(): GameState {
   return {
+    mode: "board",
     phase: "lobby",
     currentRound: 1,
     players: [],
@@ -297,6 +396,12 @@ export function defaultGameState(): GameState {
     currentEvent: null,
     availableChoiceIds: [],
     lastChoiceResult: null,
+    currentSeasonIndex: 0,
+    lifePlayers: [],
+    lifeMapSquares: [],
+    lifePlayerPositions: {},
+    lifePlayerRoutes: {},
+    pendingLifeChoices: {},
   };
 }
 

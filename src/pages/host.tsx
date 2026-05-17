@@ -129,6 +129,15 @@ function App() {
     sendMessage({ type: "start_game" });
   };
 
+  const startLifeMapGame = () => {
+    if (!clientId) return;
+    if (state.players.length < 1) {
+      setStatus("参加者が必要です");
+      return;
+    }
+    sendMessage({ type: "start_life_map_game" });
+  };
+
   const resetGame = () => {
     if (!clientId) return;
     if (!window.confirm("ゲームをリセットしてロビーに戻します。よろしいですか？")) return;
@@ -303,6 +312,13 @@ function App() {
             >
               ゲームを開始！
               {state.players.length < 1 && " (参加者が必要)"}
+            </button>
+            <button
+              className="ghost"
+              onClick={startLifeMapGame}
+              disabled={state.players.length < 1}
+            >
+              人生マップで開始
             </button>
             <button className="ghost" onClick={openDisplay}>
               ディスプレイを開く

@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Billboard, Line, OrbitControls, Sky, Text } from "@react-three/drei";
+import {
+  Billboard,
+  Cloud,
+  Clouds,
+  Line,
+  OrbitControls,
+  Sky,
+  Text,
+} from "@react-three/drei";
+import { Bloom, EffectComposer, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import { BOARD, getNextSquareId } from "../domain/boardData";
 import { colorForPlayer, type Player } from "../domain/gameShared";
@@ -12,7 +21,6 @@ import {
   mainTrackPoints,
   squareWorldPos,
   terrainHeight,
-  yearForZ,
   type Vec3,
 } from "../domain/mountainLayout";
 
@@ -27,17 +35,31 @@ interface MountainBoardProps {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Terrain — displaced plane with vertex colors per year zone
+//  Deterministic PRNG so scenery is stable across renders
+// ═══════════════════════════════════════════════════════════════════
+function mulberry32(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Terrain — smoother, with per-vertex color variation
 // ═══════════════════════════════════════════════════════════════════
 function Terrain() {
   const geometry = useMemo(() => {
-    const size = 60;
-    const segments = 96;
+    const size = 70;
+    const segments = 144;
     const geom = new THREE.PlaneGeometry(size, size, segments, segments);
     geom.rotateX(-Math.PI / 2);
 
     const pos = geom.attributes.position as THREE.BufferAttribute;
     const colors: number[] = [];
+    const rand = mulberry32(7);
 
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
@@ -45,17 +67,36 @@ function Terrain() {
       const y = terrainHeight(x, z);
       pos.setY(i, y);
 
-      // Color by year zone, blended near snow line for softness
-      const year = yearForZ(z);
-      const [r, g, b] = colorForYear(year);
+      // Smooth blend across year zone borders so transitions look natural
+      const yFloat = (() => {
+        if (z > 10) return 1;
+        if (z > 0) return 1 + (10 - z) / 10;
+        if (z > -10) return 2 + -z / 10;
+        return Math.min(4, 3 + (-z - 10) / 10);
+      })();
 
-      // Add altitude-based snow blend on upper slope
-      const snowBlend = Math.max(0, Math.min(1, (y - 12) / 4));
-      const fr = r * (1 - snowBlend) + 0.95 * snowBlend;
-      const fg = g * (1 - snowBlend) + 0.96 * snowBlend;
-      const fb = b * (1 - snowBlend) + 1.0 * snowBlend;
+      const yLow = Math.max(1, Math.floor(yFloat)) as 1 | 2 | 3 | 4;
+      const yHigh = Math.min(4, yLow + 1) as 1 | 2 | 3 | 4;
+      const t = yFloat - yLow;
+      const cLow = colorForYear(yLow);
+      const cHigh = colorForYear(yHigh);
+      let r = cLow[0] * (1 - t) + cHigh[0] * t;
+      let g = cLow[1] * (1 - t) + cHigh[1] * t;
+      let b = cLow[2] * (1 - t) + cHigh[2] * t;
 
-      colors.push(fr, fg, fb);
+      // Snow blend on high altitude
+      const snowBlend = Math.max(0, Math.min(1, (y - 11) / 5));
+      r = r * (1 - snowBlend) + 0.96 * snowBlend;
+      g = g * (1 - snowBlend) + 0.97 * snowBlend;
+      b = b * (1 - snowBlend) + 1.0 * snowBlend;
+
+      // Subtle per-vertex noise for variation
+      const nz = (rand() - 0.5) * 0.06;
+      r = Math.max(0, Math.min(1, r + nz));
+      g = Math.max(0, Math.min(1, g + nz));
+      b = Math.max(0, Math.min(1, b + nz));
+
+      colors.push(r, g, b);
     }
 
     geom.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
@@ -67,40 +108,40 @@ function Terrain() {
     <mesh geometry={geometry} receiveShadow>
       <meshStandardMaterial
         vertexColors
-        roughness={0.95}
+        roughness={0.92}
         metalness={0.0}
-        flatShading
       />
     </mesh>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Trail lines (main + branches)
+//  Trail — wider ribbon, with stones along the path
 // ═══════════════════════════════════════════════════════════════════
 function TrailLines() {
   const main = useMemo(() => mainTrackPoints(), []);
   const branches = useMemo(() => branchTrackPoints(), []);
 
-  const mainArr = useMemo<[number, number, number][]>(
-    () => main.map((p) => [p.x, p.y + 0.05, p.z]),
-    [main],
-  );
-
   return (
     <>
-      <Line points={mainArr} color="#ffe9a8" lineWidth={3} transparent opacity={0.85} />
+      <Line
+        points={main.map((p) => [p.x, p.y + 0.06, p.z])}
+        color="#f3d27e"
+        lineWidth={5}
+        transparent
+        opacity={0.92}
+      />
       {branches.map(({ key, points }) => (
         <Line
           key={key}
-          points={points.map((p) => [p.x, p.y + 0.04, p.z])}
-          color="#9ad1ff"
-          lineWidth={1.5}
+          points={points.map((p) => [p.x, p.y + 0.05, p.z])}
+          color="#bcd6ff"
+          lineWidth={2.2}
           dashed
-          dashSize={0.6}
+          dashSize={0.55}
           gapSize={0.4}
           transparent
-          opacity={0.65}
+          opacity={0.7}
         />
       ))}
     </>
@@ -108,7 +149,211 @@ function TrailLines() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Square markers
+//  Trees — instanced low-poly conifers on year 1-2 slopes
+// ═══════════════════════════════════════════════════════════════════
+function Trees() {
+  const trunkRef = useRef<THREE.InstancedMesh>(null);
+  const leavesRef = useRef<THREE.InstancedMesh>(null);
+  const COUNT = 120;
+
+  const matrices = useMemo(() => {
+    const rand = mulberry32(42);
+    const trunk: THREE.Matrix4[] = [];
+    const leaves: THREE.Matrix4[] = [];
+    const dummy = new THREE.Object3D();
+
+    let placed = 0;
+    let attempts = 0;
+    while (placed < COUNT && attempts < COUNT * 6) {
+      attempts++;
+      const x = (rand() - 0.5) * 60;
+      const z = 4 + rand() * 22; // year 1 + part of year 2
+      // avoid placing near trail (within 2.5 units of the polyline)
+      const distToTrail = trailDistance(x, z);
+      if (distToTrail < 2.5) continue;
+      const y = terrainHeight(x, z);
+      if (y < 0.4) continue;
+      const scale = 0.7 + rand() * 0.7;
+      const rotY = rand() * Math.PI * 2;
+
+      dummy.position.set(x, y + scale * 0.6, z);
+      dummy.scale.set(scale, scale * 1.1, scale);
+      dummy.rotation.set(0, rotY, 0);
+      dummy.updateMatrix();
+      trunk.push(dummy.matrix.clone());
+
+      dummy.position.set(x, y + scale * 1.6, z);
+      dummy.scale.set(scale * 1.4, scale * 2.0, scale * 1.4);
+      dummy.rotation.set(0, rotY, 0);
+      dummy.updateMatrix();
+      leaves.push(dummy.matrix.clone());
+      placed++;
+    }
+    return { trunk, leaves };
+  }, []);
+
+  useEffect(() => {
+    if (!trunkRef.current || !leavesRef.current) return;
+    matrices.trunk.forEach((m, i) => trunkRef.current!.setMatrixAt(i, m));
+    matrices.leaves.forEach((m, i) => leavesRef.current!.setMatrixAt(i, m));
+    trunkRef.current.instanceMatrix.needsUpdate = true;
+    leavesRef.current.instanceMatrix.needsUpdate = true;
+  }, [matrices]);
+
+  return (
+    <>
+      <instancedMesh
+        ref={trunkRef}
+        args={[undefined, undefined, matrices.trunk.length]}
+        castShadow
+      >
+        <cylinderGeometry args={[0.18, 0.26, 1.2, 8]} />
+        <meshStandardMaterial color="#5a3a22" roughness={0.95} />
+      </instancedMesh>
+      <instancedMesh
+        ref={leavesRef}
+        args={[undefined, undefined, matrices.leaves.length]}
+        castShadow
+      >
+        <coneGeometry args={[0.85, 1.7, 8]} />
+        <meshStandardMaterial color="#2c5b3a" roughness={0.88} flatShading />
+      </instancedMesh>
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Rocks — scattered on year 3 ridge
+// ═══════════════════════════════════════════════════════════════════
+function Rocks() {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  const COUNT = 50;
+
+  const matrices = useMemo(() => {
+    const rand = mulberry32(99);
+    const result: THREE.Matrix4[] = [];
+    const dummy = new THREE.Object3D();
+
+    let placed = 0;
+    let attempts = 0;
+    while (placed < COUNT && attempts < COUNT * 6) {
+      attempts++;
+      const x = (rand() - 0.5) * 56;
+      const z = -16 + rand() * 18; // year 3 + into year 4
+      const distToTrail = trailDistance(x, z);
+      if (distToTrail < 2.0) continue;
+      const y = terrainHeight(x, z);
+      const scale = 0.4 + rand() * 0.9;
+      dummy.position.set(x, y + scale * 0.3, z);
+      dummy.scale.set(scale, scale * 0.7, scale);
+      dummy.rotation.set(rand() * 0.4, rand() * Math.PI * 2, rand() * 0.4);
+      dummy.updateMatrix();
+      result.push(dummy.matrix.clone());
+      placed++;
+    }
+    return result;
+  }, []);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    matrices.forEach((m, i) => ref.current!.setMatrixAt(i, m));
+    ref.current.instanceMatrix.needsUpdate = true;
+  }, [matrices]);
+
+  return (
+    <instancedMesh
+      ref={ref}
+      args={[undefined, undefined, matrices.length]}
+      castShadow
+      receiveShadow
+    >
+      <icosahedronGeometry args={[0.7, 0]} />
+      <meshStandardMaterial color="#7a7268" roughness={0.95} flatShading />
+    </instancedMesh>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Snow particles — drifting near the summit
+// ═══════════════════════════════════════════════════════════════════
+function Snow() {
+  const ref = useRef<THREE.Points>(null);
+  const COUNT = 800;
+
+  const { positions, velocities } = useMemo(() => {
+    const positions = new Float32Array(COUNT * 3);
+    const velocities = new Float32Array(COUNT * 3);
+    const rand = mulberry32(123);
+    for (let i = 0; i < COUNT; i++) {
+      positions[i * 3 + 0] = (rand() - 0.5) * 50;
+      positions[i * 3 + 1] = 8 + rand() * 18;
+      positions[i * 3 + 2] = -22 + rand() * 18;
+      velocities[i * 3 + 0] = (rand() - 0.5) * 0.4;
+      velocities[i * 3 + 1] = -0.6 - rand() * 0.5;
+      velocities[i * 3 + 2] = (rand() - 0.5) * 0.3;
+    }
+    return { positions, velocities };
+  }, []);
+
+  useFrame((_, dt) => {
+    if (!ref.current) return;
+    const arr = ref.current.geometry.attributes.position.array as Float32Array;
+    for (let i = 0; i < COUNT; i++) {
+      arr[i * 3 + 0] += velocities[i * 3 + 0] * dt;
+      arr[i * 3 + 1] += velocities[i * 3 + 1] * dt;
+      arr[i * 3 + 2] += velocities[i * 3 + 2] * dt;
+      // Reset when below ground
+      if (arr[i * 3 + 1] < terrainHeight(arr[i * 3 + 0], arr[i * 3 + 2])) {
+        arr[i * 3 + 0] = (Math.random() - 0.5) * 50;
+        arr[i * 3 + 1] = 22 + Math.random() * 6;
+        arr[i * 3 + 2] = -22 + Math.random() * 18;
+      }
+    }
+    ref.current.geometry.attributes.position.needsUpdate = true;
+  });
+
+  return (
+    <points ref={ref}>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          args={[positions, 3]}
+        />
+      </bufferGeometry>
+      <pointsMaterial
+        color="#ffffff"
+        size={0.18}
+        sizeAttenuation
+        transparent
+        opacity={0.8}
+        depthWrite={false}
+      />
+    </points>
+  );
+}
+
+// ─── Trail proximity helper for scenery placement ─────────────────
+const TRAIL_POINTS_CACHE: { val: Vec3[] | null } = { val: null };
+function trailDistance(x: number, z: number): number {
+  if (!TRAIL_POINTS_CACHE.val) {
+    const all = [
+      ...mainTrackPoints(),
+      ...branchTrackPoints().flatMap((b) => b.points),
+    ];
+    TRAIL_POINTS_CACHE.val = all;
+  }
+  let min = Infinity;
+  for (const p of TRAIL_POINTS_CACHE.val) {
+    const dx = p.x - x;
+    const dz = p.z - z;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Square markers — small flagposts instead of plain discs
 // ═══════════════════════════════════════════════════════════════════
 function SquareMarkers({ highlightId }: { highlightId?: string }) {
   const ids = useMemo(() => allSquareIds(), []);
@@ -135,48 +380,68 @@ function SquareMarkers({ highlightId }: { highlightId?: string }) {
         const isCheckpoint = sq.type === "checkpoint";
         const isBranch = sq.type === "branch";
 
+        // Special landmarks: render as flagposts
+        if (isStart || isGoal) {
+          const flagColor = isStart ? "#22c55e" : "#fbbf24";
+          const labelText = isStart ? "入学" : "卒業";
+          return (
+            <group key={id} position={[p.x, p.y, p.z]}>
+              {/* base disc */}
+              <mesh receiveShadow position={[0, 0.05, 0]}>
+                <cylinderGeometry args={[0.85, 0.85, 0.12, 24]} />
+                <meshStandardMaterial color={flagColor} emissive={flagColor} emissiveIntensity={0.25} roughness={0.4} />
+              </mesh>
+              {/* pole */}
+              <mesh castShadow position={[0, 1.2, 0]}>
+                <cylinderGeometry args={[0.06, 0.06, 2.2, 8]} />
+                <meshStandardMaterial color="#3a3a3a" roughness={0.7} />
+              </mesh>
+              {/* flag */}
+              <mesh castShadow position={[0.55, 2.05, 0]}>
+                <boxGeometry args={[1.0, 0.55, 0.02]} />
+                <meshStandardMaterial color={flagColor} emissive={flagColor} emissiveIntensity={0.4} roughness={0.45} side={THREE.DoubleSide} />
+              </mesh>
+              <Billboard position={[0, 2.95, 0]}>
+                <Text fontSize={0.55} color={flagColor} outlineWidth={0.05} outlineColor="#0b1020" anchorY="bottom">
+                  {labelText}
+                </Text>
+              </Billboard>
+            </group>
+          );
+        }
+
         let color = "#ffffff";
-        let radius = 0.45;
-        let height = 0.18;
-        if (isStart) { color = "#22c55e"; radius = 0.7; height = 0.4; }
-        else if (isGoal) { color = "#fbbf24"; radius = 0.85; height = 0.6; }
-        else if (isBranchPoint) { color = "#a855f7"; radius = 0.6; height = 0.3; }
-        else if (isCheckpoint) { color = "#60a5fa"; radius = 0.55; height = 0.25; }
-        else if (isBranch) { color = "#cbd5e1"; radius = 0.32; height = 0.12; }
+        let radius = 0.4;
+        let height = 0.16;
+        if (isBranchPoint) { color = "#c084fc"; radius = 0.55; height = 0.28; }
+        else if (isCheckpoint) { color = "#7dd3fc"; radius = 0.5; height = 0.22; }
+        else if (isBranch) { color = "#dde6f2"; radius = 0.28; height = 0.1; }
 
         return (
           <group key={id} position={[p.x, p.y, p.z]}>
-            <mesh castShadow>
-              <cylinderGeometry args={[radius, radius, height, 16]} />
+            <mesh castShadow receiveShadow>
+              <cylinderGeometry args={[radius, radius * 1.05, height, 18]} />
               <meshStandardMaterial
                 color={color}
                 emissive={color}
-                emissiveIntensity={isHighlight ? 0.6 : 0.15}
-                roughness={0.5}
+                emissiveIntensity={isHighlight ? 0.65 : (isBranchPoint ? 0.3 : 0.12)}
+                roughness={0.4}
               />
             </mesh>
-            {/* Pulse ring on highlighted square */}
+            {/* Small fork marker on branch points */}
+            {isBranchPoint && (
+              <mesh castShadow position={[0, 0.55, 0]}>
+                <coneGeometry args={[0.25, 0.5, 6]} />
+                <meshStandardMaterial color="#c084fc" emissive="#c084fc" emissiveIntensity={0.5} />
+              </mesh>
+            )}
             {isHighlight && (
               <group ref={pulseRef} position={[0, 0.05, 0]}>
                 <mesh rotation={[-Math.PI / 2, 0, 0]}>
-                  <ringGeometry args={[radius + 0.2, radius + 0.45, 32]} />
+                  <ringGeometry args={[radius + 0.2, radius + 0.5, 32]} />
                   <meshBasicMaterial color="#fde68a" transparent opacity={0.7} side={THREE.DoubleSide} />
                 </mesh>
               </group>
-            )}
-            {/* Big landmarks: floating label */}
-            {(isStart || isGoal) && (
-              <Billboard position={[0, 1.6, 0]}>
-                <Text
-                  fontSize={0.7}
-                  color={color}
-                  outlineWidth={0.04}
-                  outlineColor="#0b1020"
-                  anchorY="bottom"
-                >
-                  {isStart ? "入学" : "卒業"}
-                </Text>
-              </Billboard>
             )}
           </group>
         );
@@ -186,27 +451,60 @@ function SquareMarkers({ highlightId }: { highlightId?: string }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Player avatars (capsules with floating name labels)
+//  Year signposts — wooden posts with year labels
 // ═══════════════════════════════════════════════════════════════════
-interface AvatarProps {
-  player: Player;
-  index: number;
-  isCurrent: boolean;
-  jitterOffset: number; // group-mate fan-out
-  fanCount: number;
+function YearSignposts() {
+  const zones: Array<{ year: 1 | 2 | 3 | 4; z: number; label: string }> = [
+    { year: 1, z: 14, label: "1年生" },
+    { year: 2, z: 4, label: "2年生" },
+    { year: 3, z: -6, label: "3年生" },
+    { year: 4, z: -14, label: "4年生" },
+  ];
+
+  return (
+    <>
+      {zones.map(({ year, z, label }) => {
+        const x = -23;
+        const y = terrainHeight(x, z);
+        const [r, g, b] = colorForYear(year);
+        const hex = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+        return (
+          <group key={year} position={[x, y, z]}>
+            {/* post */}
+            <mesh castShadow position={[0, 0.9, 0]}>
+              <cylinderGeometry args={[0.1, 0.13, 1.8, 8]} />
+              <meshStandardMaterial color="#6b4a2c" roughness={0.85} />
+            </mesh>
+            {/* sign plate */}
+            <mesh castShadow position={[0, 1.85, 0]} rotation={[0, 0.25, 0]}>
+              <boxGeometry args={[1.6, 0.55, 0.08]} />
+              <meshStandardMaterial color="#a37a4e" roughness={0.8} />
+            </mesh>
+            <Billboard position={[0, 1.85, 0]}>
+              <Text
+                fontSize={0.42}
+                color={hex}
+                outlineWidth={0.04}
+                outlineColor="#2b1e10"
+              >
+                {label}
+              </Text>
+            </Billboard>
+          </group>
+        );
+      })}
+    </>
+  );
 }
 
-// ─── Hop animation tuning ──────────────────────────────────────────
-const HOP_DURATION = 0.28;   // seconds per square hop
-const HOP_GAP = 0.04;        // small pause between hops
-const HOP_HEIGHT = 1.1;      // arc height in world units
+// ═══════════════════════════════════════════════════════════════════
+//  Hop animation tuning
+// ═══════════════════════════════════════════════════════════════════
+const HOP_DURATION = 0.28;
+const HOP_GAP = 0.04;
+const HOP_HEIGHT = 1.1;
 const HOP_STEP_TOTAL = HOP_DURATION + HOP_GAP;
 
-/**
- * Compute the chain of squares a player passes through, from
- * `fromId` to `toId`, by walking `getNextSquareId`.
- * Returns [fromId, ..., toId] or [toId] if no path found.
- */
 function computePath(fromId: string, toId: string, player: Player): string[] {
   if (fromId === toId) return [toId];
   const path: string[] = [fromId];
@@ -218,7 +516,6 @@ function computePath(fromId: string, toId: string, player: Player): string[] {
     if (next === toId) return path;
     cur = next;
   }
-  // No clean path discovered — fall back to direct snap
   return [toId];
 }
 
@@ -239,16 +536,26 @@ function squarePos(squareId: string, jitter: number, count: number) {
   return new THREE.Vector3(x, y, z);
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  Player avatars — chibi/marshmallow style
+// ═══════════════════════════════════════════════════════════════════
+interface AvatarProps {
+  player: Player;
+  index: number;
+  isCurrent: boolean;
+  jitterOffset: number;
+  fanCount: number;
+}
+
 function PlayerAvatar({ player, index, isCurrent, jitterOffset, fanCount }: AvatarProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const restPos = useRef(new THREE.Vector3());     // resting position after all hops
-  const currentPos = useRef(new THREE.Vector3());  // displayed position
-  const hopWaypoints = useRef<THREE.Vector3[]>([]); // [start, ..., end] for current hop sequence
-  const hopTime = useRef(0);                       // elapsed time within hop sequence
+  const restPos = useRef(new THREE.Vector3());
+  const currentPos = useRef(new THREE.Vector3());
+  const hopWaypoints = useRef<THREE.Vector3[]>([]);
+  const hopTime = useRef(0);
   const lastPosId = useRef<string | null>(null);
   const initialized = useRef(false);
 
-  // Build a hop sequence whenever player.position changes
   useEffect(() => {
     const newRest = squarePos(player.position, jitterOffset, fanCount);
     if (!newRest) return;
@@ -266,14 +573,12 @@ function PlayerAvatar({ player, index, isCurrent, jitterOffset, fanCount }: Avat
 
     const path = computePath(lastPosId.current ?? player.position, player.position, player);
     if (path.length < 2) {
-      // No multi-step path — just place at rest
       currentPos.current.copy(newRest);
       hopWaypoints.current = [];
     } else {
       const wps = path
         .map((id) => squarePos(id, jitterOffset, fanCount))
         .filter((v): v is THREE.Vector3 => v !== null);
-      // Make sure the visible position starts at the first waypoint
       currentPos.current.copy(wps[0]);
       hopWaypoints.current = wps;
       hopTime.current = 0;
@@ -281,7 +586,6 @@ function PlayerAvatar({ player, index, isCurrent, jitterOffset, fanCount }: Avat
     lastPosId.current = player.position;
   }, [player.position, jitterOffset, fanCount, player]);
 
-  // Re-anchor rest position when fan layout shifts (others joining the same square)
   useEffect(() => {
     if (hopWaypoints.current.length > 0) return;
     const r = squarePos(player.position, jitterOffset, fanCount);
@@ -305,7 +609,6 @@ function PlayerAvatar({ player, index, isCurrent, jitterOffset, fanCount }: Avat
       const tInStep = (hopTime.current - stepIndex * HOP_STEP_TOTAL) / HOP_DURATION;
 
       if (hopTime.current >= totalSteps * HOP_STEP_TOTAL) {
-        // Hop sequence complete
         currentPos.current.copy(wps[wps.length - 1]);
         hopWaypoints.current = [];
       } else {
@@ -316,18 +619,31 @@ function PlayerAvatar({ player, index, isCurrent, jitterOffset, fanCount }: Avat
         const x = from.x + (to.x - from.x) * eased;
         const z = from.z + (to.z - from.z) * eased;
         const baseY = from.y + (to.y - from.y) * eased;
-        // Parabolic arc — only while in the active hop part (e <= 1), flat during gap
         const arc = e < 1 ? Math.sin(e * Math.PI) * HOP_HEIGHT : 0;
         currentPos.current.set(x, baseY + arc, z);
       }
     } else {
-      // Idle: ease toward resting position (handles fan-out adjustments)
       currentPos.current.lerp(restPos.current, Math.min(1, dt * 6));
+      // Idle bob
+      const t = performance.now() / 1000;
+      const bob = Math.sin(t * 2 + jitterOffset) * 0.06;
+      groupRef.current.position.set(
+        currentPos.current.x,
+        currentPos.current.y + bob,
+        currentPos.current.z,
+      );
+      // Pulse glow when current player
+      if (isCurrent) {
+        const s = 1 + Math.sin(performance.now() / 200) * 0.06;
+        groupRef.current.scale.set(s, s, s);
+      } else {
+        groupRef.current.scale.set(1, 1, 1);
+      }
+      return;
     }
 
     groupRef.current.position.copy(currentPos.current);
 
-    // Pulse glow when current player
     if (isCurrent) {
       const s = 1 + Math.sin(performance.now() / 200) * 0.06;
       groupRef.current.scale.set(s, s, s);
@@ -340,30 +656,58 @@ function PlayerAvatar({ player, index, isCurrent, jitterOffset, fanCount }: Avat
 
   return (
     <group ref={groupRef}>
-      {/* body */}
-      <mesh castShadow position={[0, 0.95, 0]}>
-        <capsuleGeometry args={[0.55, 1.2, 6, 12]} />
+      {/* shadow disc */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+        <circleGeometry args={[0.95, 24]} />
+        <meshBasicMaterial color="#000" transparent opacity={0.28} />
+      </mesh>
+      {/* body — squishy rounded shape */}
+      <mesh castShadow position={[0, 0.7, 0]}>
+        <sphereGeometry args={[0.65, 24, 18]} />
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={isCurrent ? 0.6 : 0.22}
-          roughness={0.4}
+          emissiveIntensity={isCurrent ? 0.5 : 0.18}
+          roughness={0.45}
         />
       </mesh>
-      {/* head */}
-      <mesh castShadow position={[0, 2.1, 0]}>
-        <sphereGeometry args={[0.48, 16, 12]} />
-        <meshStandardMaterial color="#f5d6b1" roughness={0.7} />
+      {/* slight body bottom bulge */}
+      <mesh castShadow position={[0, 0.3, 0]} scale={[1, 0.55, 1]}>
+        <sphereGeometry args={[0.55, 20, 14]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={isCurrent ? 0.45 : 0.15} roughness={0.5} />
       </mesh>
-      {/* shadow disc */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-        <circleGeometry args={[0.95, 20]} />
-        <meshBasicMaterial color="#000" transparent opacity={0.28} />
+      {/* head */}
+      <mesh castShadow position={[0, 1.55, 0]}>
+        <sphereGeometry args={[0.5, 24, 18]} />
+        <meshStandardMaterial color="#ffd9b5" roughness={0.6} />
+      </mesh>
+      {/* eyes */}
+      <mesh position={[-0.18, 1.6, 0.42]}>
+        <sphereGeometry args={[0.07, 12, 8]} />
+        <meshBasicMaterial color="#1a1a2a" />
+      </mesh>
+      <mesh position={[0.18, 1.6, 0.42]}>
+        <sphereGeometry args={[0.07, 12, 8]} />
+        <meshBasicMaterial color="#1a1a2a" />
+      </mesh>
+      {/* graduation cap */}
+      <mesh castShadow position={[0, 1.95, 0]}>
+        <cylinderGeometry args={[0.3, 0.3, 0.18, 12]} />
+        <meshStandardMaterial color="#1f1f33" roughness={0.6} />
+      </mesh>
+      <mesh castShadow position={[0, 2.07, 0]}>
+        <boxGeometry args={[0.95, 0.05, 0.95]} />
+        <meshStandardMaterial color="#1f1f33" roughness={0.6} />
+      </mesh>
+      {/* tassel */}
+      <mesh position={[0.4, 2.07, 0.4]}>
+        <sphereGeometry args={[0.06, 8, 6]} />
+        <meshStandardMaterial color="#fde68a" emissive="#fde68a" emissiveIntensity={0.4} />
       </mesh>
       {/* name label */}
-      <Billboard position={[0, 3.1, 0]}>
+      <Billboard position={[0, 2.85, 0]}>
         <Text
-          fontSize={0.7}
+          fontSize={0.55}
           color="#ffffff"
           outlineWidth={0.06}
           outlineColor="#0b1020"
@@ -372,21 +716,20 @@ function PlayerAvatar({ player, index, isCurrent, jitterOffset, fanCount }: Avat
           {player.name}
         </Text>
       </Billboard>
-      {/* current-turn arrow + spotlight beam */}
+      {/* current-turn indicator */}
       {isCurrent && (
         <>
-          <Billboard position={[0, 4.0, 0]}>
-            <Text fontSize={0.95} color="#fde68a" outlineWidth={0.06} outlineColor="#0b1020">
+          <Billboard position={[0, 3.6, 0]}>
+            <Text fontSize={0.85} color="#fde68a" outlineWidth={0.06} outlineColor="#0b1020">
               ▼
             </Text>
           </Billboard>
-          {/* Vertical light beam — visible from any angle */}
           <mesh position={[0, 5, 0]}>
-            <cylinderGeometry args={[0.05, 1.2, 10, 12, 1, true]} />
+            <cylinderGeometry args={[0.06, 1.4, 10, 16, 1, true]} />
             <meshBasicMaterial
               color="#fde68a"
               transparent
-              opacity={0.18}
+              opacity={0.22}
               side={THREE.DoubleSide}
               depthWrite={false}
             />
@@ -400,13 +743,13 @@ function PlayerAvatar({ player, index, isCurrent, jitterOffset, fanCount }: Avat
 // ═══════════════════════════════════════════════════════════════════
 //  Camera rig — overview / follow / cinema
 // ═══════════════════════════════════════════════════════════════════
+const OVERVIEW_CAM_POS = new THREE.Vector3(0, 26, 42);
+const OVERVIEW_TARGET = new THREE.Vector3(0, 4, -4);
+
 interface CameraRigProps {
   mode: CameraMode;
   followPos: Vec3 | null;
 }
-
-const OVERVIEW_CAM_POS = new THREE.Vector3(0, 26, 42);
-const OVERVIEW_TARGET = new THREE.Vector3(0, 4, -4);
 
 function CameraRig({ mode, followPos }: CameraRigProps) {
   const { camera } = useThree();
@@ -415,7 +758,6 @@ function CameraRig({ mode, followPos }: CameraRigProps) {
   const orbitRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
   const prevMode = useRef<CameraMode | null>(null);
 
-  // Snap camera back to overview when entering overview mode
   useEffect(() => {
     if (mode === "overview" && prevMode.current !== "overview") {
       camera.position.copy(OVERVIEW_CAM_POS);
@@ -429,12 +771,8 @@ function CameraRig({ mode, followPos }: CameraRigProps) {
   }, [mode, camera]);
 
   useFrame((state, dt) => {
-    if (mode === "overview") {
-      // OrbitControls handle it
-      return;
-    }
+    if (mode === "overview") return;
     if (mode === "follow" && followPos) {
-      // Position camera behind & above the player, looking at them
       const desired = new THREE.Vector3(
         followPos.x,
         followPos.y + 6,
@@ -449,8 +787,6 @@ function CameraRig({ mode, followPos }: CameraRigProps) {
       camera.lookAt(targetPos.current);
     }
     if (mode === "cinema") {
-      // Slow orbit around center for ambient cinematic feel.
-      // Start near the default front-view, then drift slowly.
       const t = state.clock.elapsedTime * 0.06;
       const radius = 32;
       const desired = new THREE.Vector3(
@@ -483,41 +819,6 @@ function CameraRig({ mode, followPos }: CameraRigProps) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Year zone signposts — float labels at zone centers
-// ═══════════════════════════════════════════════════════════════════
-function YearSignposts() {
-  const zones: Array<{ year: 1 | 2 | 3 | 4; z: number; label: string }> = [
-    { year: 1, z: 14.5, label: "1年生" },
-    { year: 2, z: 4.5, label: "2年生" },
-    { year: 3, z: -5.5, label: "3年生" },
-    { year: 4, z: -15, label: "4年生" },
-  ];
-
-  return (
-    <>
-      {zones.map(({ year, z, label }) => {
-        const x = -22;
-        const y = terrainHeight(x, z) + 0.5;
-        const [r, g, b] = colorForYear(year);
-        const hex = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
-        return (
-          <Billboard key={year} position={[x, y + 1.5, z]}>
-            <Text
-              fontSize={0.85}
-              color={hex}
-              outlineWidth={0.05}
-              outlineColor="#0b1020"
-            >
-              {label}
-            </Text>
-          </Billboard>
-        );
-      })}
-    </>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════
 //  Main component
 // ═══════════════════════════════════════════════════════════════════
 export function MountainBoard({
@@ -526,7 +827,6 @@ export function MountainBoard({
   highlightSquareId,
   cameraMode = "overview",
 }: MountainBoardProps) {
-  // Group players by square so we can fan them out
   const fanInfo = useMemo(() => {
     const counts = new Map<string, number>();
     const order = new Map<string, number>();
@@ -555,34 +855,46 @@ export function MountainBoard({
       camera={{ position: [0, 26, 42], fov: 50, near: 0.1, far: 200 }}
       style={{ width: "100%", height: "100%", display: "block" }}
     >
-      <color attach="background" args={["#0b1224"]} />
-      <fog attach="fog" args={["#0b1224", 45, 90]} />
+      <color attach="background" args={["#cfe6ff"]} />
+      <fog attach="fog" args={["#dfeeff", 50, 110]} />
 
       {/* Lighting */}
-      <ambientLight intensity={0.55} />
+      <ambientLight intensity={0.55} color="#ddeeff" />
       <directionalLight
-        position={[15, 28, 18]}
-        intensity={1.15}
+        position={[18, 32, 14]}
+        intensity={1.4}
+        color="#fff5d6"
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-camera-left={-30}
-        shadow-camera-right={30}
-        shadow-camera-top={30}
-        shadow-camera-bottom={-30}
+        shadow-camera-left={-35}
+        shadow-camera-right={35}
+        shadow-camera-top={35}
+        shadow-camera-bottom={-35}
+        shadow-bias={-0.0005}
       />
-      <hemisphereLight args={["#bcd9ff", "#3a3520", 0.4]} />
+      <hemisphereLight args={["#cfe6ff", "#3a3520", 0.5]} />
 
       <Sky
         distance={4000}
-        sunPosition={[15, 25, 18]}
+        sunPosition={[18, 25, 14]}
         inclination={0.49}
         azimuth={0.25}
-        turbidity={6}
-        rayleigh={1.5}
+        turbidity={4.5}
+        rayleigh={1.3}
       />
 
+      {/* Volumetric clouds */}
+      <Clouds material={THREE.MeshBasicMaterial} limit={20}>
+        <Cloud position={[-22, 22, 8]} segments={28} bounds={[10, 4, 6]} volume={6} color="#ffffff" opacity={0.55} fade={50} />
+        <Cloud position={[22, 24, -4]} segments={24} bounds={[8, 3, 5]} volume={5} color="#ffffff" opacity={0.5} fade={50} />
+        <Cloud position={[0, 27, -22]} segments={28} bounds={[12, 4, 6]} volume={7} color="#ffffff" opacity={0.55} fade={50} />
+      </Clouds>
+
       <Terrain />
+      <Trees />
+      <Rocks />
+      <Snow />
       <TrailLines />
       <SquareMarkers highlightId={highlightSquareId} />
       <YearSignposts />
@@ -603,6 +915,11 @@ export function MountainBoard({
       })}
 
       <CameraRig mode={cameraMode} followPos={followPos} />
+
+      <EffectComposer>
+        <Bloom intensity={0.45} luminanceThreshold={0.55} luminanceSmoothing={0.2} mipmapBlur />
+        <Vignette eskil={false} offset={0.18} darkness={0.55} />
+      </EffectComposer>
     </Canvas>
   );
 }
