@@ -31,11 +31,13 @@ export function calculateScore(player: Player): number {
   total += res.health * 1;
   total += res.money * 0.5;
 
-  // Credit bonus / penalty
-  if (res.credits >= 124) {
+  // Credit bonus / penalty (卒業要件: 124単位)
+  if (res.credits >= 140) {
+    total += 15;
+  } else if (res.credits >= 124) {
     total += 10;
-  } else if (res.credits >= 110) {
-    total += 5;
+  } else if (res.credits >= 100) {
+    total += 3;
   } else {
     total -= 10;
   }
@@ -122,8 +124,8 @@ export function determineEnding(player: Player): Ending {
   const exp = player.experience;
   const res = player.resources;
 
-  // 1. Credits too low → ryuunen
-  if (res.credits < 110) {
+  // 1. Credits too low → ryuunen (卒業要件: 124単位)
+  if (res.credits < 124) {
     return ENDINGS.ryuunen;
   }
 

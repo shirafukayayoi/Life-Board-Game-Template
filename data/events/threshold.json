@@ -46,11 +46,11 @@
       },
       {
         "id": "留年危機B",
-        "label": "もう無理…留年する",
+        "label": "もう無理…一度立ち止まる",
         "effects": {
           "time": 3,
           "money": -3,
-          "credits": -8,
+          "credits": 0,
           "health": -1,
           "connections": -1
         }

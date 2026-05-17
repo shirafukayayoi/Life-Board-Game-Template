@@ -7,11 +7,11 @@ import { randomUUID } from "crypto";
 import { WebSocketServer } from "ws";
 
 import { EVENTS, THRESHOLD_EVENTS } from "./events.js";
-import { BOARD, getNextSquareId, meetsCondition } from "./board.js";
+import { meetsCondition } from "./board.js";
 import { generateResults } from "./endings.js";
 
 // ═══════════════════════════════════════════════════════════════════
-//  Constants & Helpers (mirrored from gameShared.ts)
+//  Constants & Helpers
 // ═══════════════════════════════════════════════════════════════════
 
 const PORT = Number(process.env.PORT ?? 4173);
@@ -23,7 +23,7 @@ const EXPERIENCE_KEYS = ["intellect", "connections", "work_tolerance", "action_p
 const RESOURCE_RANGES = {
   time:    { min: 0,  max: 12 },
   money:   { min: -5, max: 99 },
-  credits: { min: 0,  max: 130 },
+  credits: { min: 0,  max: 160 },
   health:  { min: 0,  max: 12 },
 };
 
@@ -35,15 +35,22 @@ const EXPERIENCE_RANGES = {
   romance_exp:     { min: 0, max: 10 },
 };
 
+/**
+ * Credit checkpoints — all are WARNING ONLY (no penalty).
+ * Key = last month of that year (end-of-year check).
+ * Month 47 is the single graduation check (handled separately in endRound).
+ */
 const CREDIT_CHECKPOINTS = {
-  4: 20,   // End of Year 1
-  8: 50,   // End of Year 2
-  12: 80,  // End of Year 3
-  16: 110, // Graduation
+  12: 25,  // End of Year 1 — warning if below
+  24: 55,  // End of Year 2 — warning if below
+  36: 90,  // End of Year 3 — warning if below
 };
 
-const SEASON_ORDER = ["spring", "summer", "autumn", "winter"];
-const SEASON_LABELS = { spring: "春", summer: "夏", autumn: "秋", winter: "冬" };
+const GRADUATION_REQUIRED = 124; // Month 47 留年判定ライン
+const TOTAL_ROUNDS = 48;
+
+/** Month names indexed 0-11 → [4月, 5月, ..., 3月] */
+const MONTH_NAMES = ["4月","5月","6月","7月","8月","9月","10月","11月","12月","1月","2月","3月"];
 
 function clampResource(key, value) {
   const r = RESOURCE_RANGES[key];
@@ -55,19 +62,20 @@ function clampExperience(key, value) {
   return Math.max(r.min, Math.min(r.max, value));
 }
 
-function diceToSquares(roll) {
-  return roll;
-}
-
+/**
+ * Returns display info for a given round (1-48).
+ * 1ラウンド = 1ヶ月 = 大学1年4月〜4年3月
+ */
 function getRoundInfo(round) {
-  const clamped = Math.max(1, Math.min(16, round));
-  const year = Math.ceil(clamped / 4);
-  const season = SEASON_ORDER[(clamped - 1) % 4];
+  const clamped = Math.max(1, Math.min(TOTAL_ROUNDS, round));
+  const year = Math.ceil(clamped / 12);
+  const monthIndex = (clamped - 1) % 12;
+  const monthName = MONTH_NAMES[monthIndex];
   return {
     round: clamped,
     year,
-    season,
-    label: `${year}年 ${SEASON_LABELS[season]}`,
+    monthIndex,
+    label: `${year}年生 ${monthName}`,
   };
 }
 
@@ -211,12 +219,11 @@ function markOffline(clientId) {
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * Get the event ID from the board square at a given position.
- * Events in EVENTS are keyed by position ID (e.g. "1", "9A-1").
+ * Get the event for the current round number.
+ * Events in EVENTS are now keyed by round number string (e.g. "1", "12", "48").
  */
-function getEventForPosition(positionId) {
-  // Events are keyed by the square ID directly
-  return EVENTS[positionId] ?? null;
+function getEventForRound(round) {
+  return EVENTS[String(round)] ?? null;
 }
 
 /**
@@ -230,22 +237,21 @@ function checkThresholdEvents(player) {
   }
 
   const res = player.resources;
-
   let result = null;
 
-  // 1. time < 4 AND random < 0.5 -> emergency hospitalization
+  // 1. time < 4 AND random < 0.5 → 緊急入院
   if (res.time < 4 && Math.random() < 0.5) {
     result = THRESHOLD_EVENTS["緊急入院"];
   }
-  // 2. time < 6 AND random < 0.2 -> ryuunen crisis
+  // 2. time < 6 AND random < 0.2 → 留年危機
   else if (res.time < 6 && Math.random() < 0.2) {
     result = THRESHOLD_EVENTS["留年危機"];
   }
-  // 3. money <= -3 -> broke (guaranteed)
+  // 3. money <= -3 → 金欠 (guaranteed)
   else if (res.money <= -3) {
     result = THRESHOLD_EVENTS["金欠"];
   }
-  // 4. has_license AND random < 0.1 -> bike stop
+  // 4. has_license AND random < 0.1 → 無灯火運転
   else if (player.flags.has_license && Math.random() < 0.1) {
     result = THRESHOLD_EVENTS["無灯火運転"];
   }
@@ -258,7 +264,6 @@ function checkThresholdEvents(player) {
 
 /**
  * Resolve the event choices considering conditional variants.
- * Returns the appropriate choices array for the player.
  */
 function resolveEventChoices(event, player) {
   if (event.conditionalVariants) {
@@ -287,7 +292,6 @@ function filterAvailableChoices(choices, player) {
 
 /**
  * Apply stat effects to a player. Mutates the player object.
- * Returns the actual effects applied (after clamping).
  */
 function applyEffects(player, effects) {
   if (!effects) return;
@@ -305,13 +309,11 @@ function applyEffects(player, effects) {
 
 /**
  * Apply flag effects to a player. Mutates the player object.
- * Tracks new true flags in flagHistory.
  */
 function applyFlagEffects(player, flagEffects) {
   if (!flagEffects) return;
   for (const [key, value] of Object.entries(flagEffects)) {
     player.flags[key] = value;
-    // Track truthy flags in history
     if (value && value !== "none" && !player.flagHistory.includes(key)) {
       player.flagHistory.push(key);
     }
@@ -319,7 +321,8 @@ function applyFlagEffects(player, flagEffects) {
 }
 
 /**
- * Apply per-round flag effects at the start of each round.
+ * Apply per-quarter flag effects (every 3 rounds).
+ * This keeps balance equivalent to the original 4-seasons-per-year model.
  */
 function applyPerRoundFlagEffects(player) {
   if (player.flags.living_alone) {
@@ -344,42 +347,19 @@ function getCurrentPlayer() {
 }
 
 /**
- * Move a player forward by a number of squares on the board.
- */
-function movePlayer(player, squaresToMove) {
-  let currentPos = player.position;
-  for (let i = 0; i < squaresToMove; i++) {
-    const nextId = getNextSquareId(currentPos, player);
-    if (nextId === null) break; // Already at goal
-    currentPos = nextId;
-    // Stop at branch points — player must choose a route
-    const square = BOARD[currentPos];
-    if (square && square.type === "branch_point") break;
-  }
-  player.position = currentPos;
-}
-
-/**
- * Present the event for the current player's position.
+ * Present the event for a given player at the current round.
  * Sets state phase to "choosing" and broadcasts show_event.
  */
 function presentEvent(player) {
-  // Branch points always show their own event (route selection)
-  const square = BOARD[player.position];
-  const isBranchPoint = square && square.type === "branch_point";
+  // Check threshold events first
+  let event = checkThresholdEvents(player);
 
-  // Check threshold events first (but not at branch points)
-  let event = null;
-  if (!isBranchPoint) {
-    event = checkThresholdEvents(player);
+  if (!event) {
+    event = getEventForRound(state.currentRound);
   }
 
   if (!event) {
-    event = getEventForPosition(player.position);
-  }
-
-  if (!event) {
-    // No event (e.g. at goal) — auto-advance turn
+    // No event for this round — auto-advance turn
     advanceTurn();
     return;
   }
@@ -387,7 +367,7 @@ function presentEvent(player) {
   // Resolve conditional variants
   const resolvedEvent = resolveEventChoices(event, player);
 
-  // If no choices (branch point / goal), auto-advance
+  // If no choices, auto-advance
   if (!resolvedEvent.choices || resolvedEvent.choices.length === 0) {
     advanceTurn();
     return;
@@ -397,7 +377,6 @@ function presentEvent(player) {
   const available = filterAvailableChoices(resolvedEvent.choices, player);
 
   if (available.length === 0) {
-    // No choices available — auto-advance
     advanceTurn();
     return;
   }
@@ -427,34 +406,26 @@ function processChoice(player, choiceId) {
   const choice = event.choices.find((c) => c.id === choiceId);
   if (!choice) return;
 
-  // Build the combined effects that will be reported
   const appliedEffects = { ...choice.effects };
 
-  // Apply base effects
   applyEffects(player, choice.effects);
 
-  // Apply flag effects
   if (choice.flagEffects) {
     applyFlagEffects(player, choice.flagEffects);
   }
 
-  // Handle random chance
   if (choice.randomChance !== undefined) {
     const roll = Math.random();
     if (roll < choice.randomChance) {
-      // Bonus
       if (choice.randomBonusEffects && Object.keys(choice.randomBonusEffects).length > 0) {
         applyEffects(player, choice.randomBonusEffects);
-        // Merge bonus into applied effects for display
         for (const [k, v] of Object.entries(choice.randomBonusEffects)) {
           appliedEffects[k] = (appliedEffects[k] ?? 0) + v;
         }
       }
     } else {
-      // Penalty
       if (choice.randomPenaltyEffects && Object.keys(choice.randomPenaltyEffects).length > 0) {
         applyEffects(player, choice.randomPenaltyEffects);
-        // Merge penalty into applied effects for display
         for (const [k, v] of Object.entries(choice.randomPenaltyEffects)) {
           appliedEffects[k] = (appliedEffects[k] ?? 0) + v;
         }
@@ -472,20 +443,15 @@ function processChoice(player, choiceId) {
   };
 
   state.lastChoiceResult = result;
-
   broadcast({ type: "choice_result", result });
 
-  // If choice has a branchRoute, move player to that branch start
-  if (choice.branchRoute) {
-    player.position = choice.branchRoute;
-  }
-
-  // Advance turn
   advanceTurn();
 }
 
 /**
  * Advance to the next player's turn, or end the round.
+ * In the new fixed-progression system there is no "rolling" phase —
+ * the next player's event is presented immediately.
  */
 function advanceTurn() {
   const currentPlayerId = state.turnOrder[state.turnIndex];
@@ -511,38 +477,68 @@ function advanceTurn() {
       attempts++;
     }
 
-    // Skip offline players
+    state.turnIndex = nextIndex;
+    state.lastChoiceResult = null;
+
     const nextPlayer = state.players.find((p) => p.id === state.turnOrder[nextIndex]);
+
+    // Skip offline players
     if (nextPlayer && !nextPlayer.online) {
       state.completedTurns.push(state.turnOrder[nextIndex]);
-      state.turnIndex = nextIndex;
       advanceTurn();
       return;
     }
 
-    state.turnIndex = nextIndex;
-    state.phase = "rolling";
-    state.lastRoll = null;
-    state.lastChoiceResult = null;
     broadcastState();
+
+    // Auto-present event for the next player (no dice roll needed)
+    if (nextPlayer) {
+      presentEvent(nextPlayer);
+    }
   }
 }
 
 /**
- * End the current round, apply per-round effects, check credit checkpoints.
+ * End the current round, apply quarterly flag effects, check credit checkpoints.
  */
 function endRound() {
   const finishedRound = state.currentRound;
   const roundInfo = getRoundInfo(finishedRound);
 
-  // Check credit checkpoints
-  const creditReq = CREDIT_CHECKPOINTS[finishedRound];
-  if (creditReq !== undefined) {
+  // Apply per-quarter lifestyle flag effects (every 3 months)
+  if (finishedRound % 3 === 0) {
     for (const player of state.players) {
-      if (player.resources.credits < creditReq) {
+      if (player.online) {
+        applyPerRoundFlagEffects(player);
+      }
+    }
+  }
+
+  // Check credit checkpoints (warning only — no penalty)
+  const creditWarnThreshold = CREDIT_CHECKPOINTS[finishedRound];
+  if (creditWarnThreshold !== undefined) {
+    for (const player of state.players) {
+      if (player.resources.credits < creditWarnThreshold) {
         broadcast({
           type: "system",
-          message: `${player.name} の単位が不足しています！（${player.resources.credits}/${creditReq}単位）`,
+          message: `⚠️ ${player.name} の単位が少ない！（${player.resources.credits}/${creditWarnThreshold}単位）ペナルティはありませんが注意！`,
+        });
+      }
+    }
+  }
+
+  // Month 47: Graduation check — 留年判定（唯一）
+  if (finishedRound === 47) {
+    for (const player of state.players) {
+      if (player.resources.credits < GRADUATION_REQUIRED) {
+        broadcast({
+          type: "system",
+          message: `🔄 ${player.name} は単位不足で留年が確定しました（${player.resources.credits}/${GRADUATION_REQUIRED}単位）`,
+        });
+      } else {
+        broadcast({
+          type: "system",
+          message: `🎓 ${player.name} の卒業が確定しました！（${player.resources.credits}/${GRADUATION_REQUIRED}単位）`,
         });
       }
     }
@@ -551,8 +547,8 @@ function endRound() {
   // Broadcast round end
   broadcast({ type: "round_end", round: finishedRound, roundInfo });
 
-  // Check if game is over (round 16)
-  if (finishedRound >= 16) {
+  // Check if game is over (round 48)
+  if (finishedRound >= TOTAL_ROUNDS) {
     endGame();
     return;
   }
@@ -567,25 +563,20 @@ function endRound() {
   state.currentEvent = null;
   state.availableChoiceIds = [];
 
-  // Apply per-round flag effects at end of previous round (not start of new)
-  // This way players see costs as a result of their lifestyle, not as a surprise
-  // before they can act. Threshold checks happen during turns, after the player
-  // has had a chance to earn money/time.
-  for (const player of state.players) {
-    if (player.online) {
-      applyPerRoundFlagEffects(player);
-    }
-  }
-
-  state.phase = "rolling";
   broadcastState();
+
+  // Auto-present event for first player (no dice roll)
+  const firstPlayer = state.players.find((p) => p.id === state.turnOrder[0]);
+  if (firstPlayer && firstPlayer.online) {
+    presentEvent(firstPlayer);
+  }
 }
 
 /**
  * End the game, calculate results, broadcast.
  */
 function endGame() {
-  const activePlayers = state.players.slice(); // Include all players regardless of online status
+  const activePlayers = state.players.slice();
   const results = generateResults(activePlayers);
 
   state.phase = "result";
@@ -658,8 +649,7 @@ wss.on("connection", (socket) => {
       if (client.role !== "host" || client.id !== hostId) return;
       if (state.players.length === 0) return;
 
-      // Initialize game state
-      state.phase = "rolling";
+      state.phase = "choosing";
       state.currentRound = 1;
       state.turnOrder = state.players.map((p) => p.id);
       state.completedTurns = [];
@@ -669,7 +659,6 @@ wss.on("connection", (socket) => {
       state.availableChoiceIds = [];
       state.lastChoiceResult = null;
 
-      // Reset all players
       for (const player of state.players) {
         player.resources = defaultResources();
         player.experience = defaultExperience();
@@ -681,36 +670,12 @@ wss.on("connection", (socket) => {
 
       broadcastState();
       broadcastNavigate("/controller-play.html", ["controller"]);
-      return;
-    }
 
-    // ─── player_roll ───────────────────────────────────────────
-    if (payload.type === "player_roll") {
-      if (client.role !== "controller") return;
-      if (state.phase !== "rolling") return;
-      if (state.turnOrder.length === 0) return;
-
-      const currentPlayer = getCurrentPlayer();
-      if (!currentPlayer || currentPlayer.id !== client.id) return;
-      if (!currentPlayer.online) return;
-
-      // Roll dice
-      const roll = Math.floor(Math.random() * 3) + 1;
-      const squaresToMove = diceToSquares(roll);
-
-      // Move player
-      movePlayer(currentPlayer, squaresToMove);
-      currentPlayer.lastRoll = roll;
-
-      state.lastRoll = {
-        playerId: currentPlayer.id,
-        playerName: currentPlayer.name,
-        value: roll,
-        squaresAdvanced: squaresToMove,
-      };
-
-      // Present event for the new position
-      presentEvent(currentPlayer);
+      // Auto-present first event (no dice roll in new system)
+      const firstPlayer = state.players.find((p) => p.id === state.turnOrder[0]);
+      if (firstPlayer && firstPlayer.online) {
+        presentEvent(firstPlayer);
+      }
       return;
     }
 

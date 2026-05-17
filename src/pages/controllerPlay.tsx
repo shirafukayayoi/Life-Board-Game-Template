@@ -126,38 +126,6 @@ const S = {
     color: "#6b7280",
     animation: pulse ? "pulse 2s ease-in-out infinite" : "none",
   }),
-  diceButton: (color: string) => ({
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 140,
-    height: 140,
-    borderRadius: 28,
-    border: "none",
-    background: `linear-gradient(135deg, ${color}, ${color}dd)`,
-    color: "#fff",
-    fontSize: 24,
-    fontWeight: 700,
-    cursor: "pointer",
-    margin: "20px auto",
-    boxShadow: `0 8px 24px ${color}44`,
-    transition: "transform 0.15s, box-shadow 0.15s",
-    touchAction: "manipulation" as const,
-  }),
-  diceResult: {
-    textAlign: "center" as const,
-    padding: "24px 0",
-  },
-  diceNumber: {
-    fontSize: 64,
-    fontWeight: 800,
-    lineHeight: 1,
-  },
-  diceAdvanced: {
-    fontSize: 16,
-    color: "#6b7280",
-    marginTop: 8,
-  },
   eventTitle: {
     fontSize: 22,
     fontWeight: 700,
@@ -383,11 +351,7 @@ styleTag.textContent = `
     0% { opacity: 1; transform: translateY(0); }
     100% { opacity: 0; transform: translateY(-40px); }
   }
-  @keyframes diceShake {
-    0%, 100% { transform: rotate(0deg) scale(1); }
-    25% { transform: rotate(-8deg) scale(1.05); }
-    75% { transform: rotate(8deg) scale(1.05); }
-  }
+
 `;
 document.head.appendChild(styleTag);
 
@@ -574,14 +538,11 @@ export function ControllerPlayPage() {
 
   // UI state
   const [confirmChoice, setConfirmChoice] = useState<string | null>(null);
-  const [rolling, setRolling] = useState(false);
   const [showStatChanges, setShowStatChanges] = useState(false);
-  const [myDiceResult, setMyDiceResult] = useState<{ value: number; squares: number } | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const clientIdRef = useRef<string | null>(clientId);
   clientIdRef.current = clientId;
-  const stateRef = useRef<GameState>(state);
   const showStatChangesRef = useRef(showStatChanges);
   showStatChangesRef.current = showStatChanges;
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -664,22 +625,7 @@ export function ControllerPlayPage() {
           break;
 
         case "state": {
-          const prev = stateRef.current;
           setState(msg.state);
-          stateRef.current = msg.state;
-
-          // Detect my dice roll result
-          if (
-            msg.state.lastRoll &&
-            msg.state.lastRoll.playerId === clientIdRef.current &&
-            (!prev.lastRoll || prev.lastRoll.playerId !== clientIdRef.current || prev.phase === "rolling")
-          ) {
-            setMyDiceResult({
-              value: msg.state.lastRoll.value,
-              squares: msg.state.lastRoll.squaresAdvanced,
-            });
-            setRolling(false);
-          }
 
           // Clear event if phase changed away from choosing
           if (
@@ -690,10 +636,6 @@ export function ControllerPlayPage() {
             setAvailableChoiceIds([]);
             setEventTargetPlayerId(null);
           }
-          // When it's a new turn (rolling phase, no lastRoll), clear dice result
-          if (msg.state.phase === "rolling" && !msg.state.lastRoll) {
-            setMyDiceResult(null);
-          }
           // Don't clear animation state if we're currently showing stat changes
           if (!showStatChangesRef.current) {
             setLastChoiceResult(null);
@@ -702,17 +644,9 @@ export function ControllerPlayPage() {
         }
 
         case "show_event": {
-          setRolling(false);
-          // If this event is for me and I just rolled, delay showing
-          // the event so the dice result is visible for 1.5 seconds
-          const isForMe = msg.playerId === clientIdRef.current;
-          const delay = isForMe ? 1500 : 0;
-          setTimeout(() => {
-            setMyDiceResult(null);
-            setCurrentEvent(msg.event);
-            setAvailableChoiceIds(msg.availableChoiceIds);
-            setEventTargetPlayerId(msg.playerId);
-          }, delay);
+          setCurrentEvent(msg.event);
+          setAvailableChoiceIds(msg.availableChoiceIds);
+          setEventTargetPlayerId(msg.playerId);
           break;
         }
 
@@ -772,11 +706,6 @@ export function ControllerPlayPage() {
   );
 
   // ─── Actions ────────────────────────────────────────────────
-  const handleRoll = useCallback(() => {
-    setRolling(true);
-    sendMessage({ type: "player_roll" });
-  }, [sendMessage]);
-
   const handleChoiceConfirm = useCallback(() => {
     if (!confirmChoice) return;
     sendMessage({ type: "player_choice", choiceId: confirmChoice });
@@ -786,8 +715,6 @@ export function ControllerPlayPage() {
   // ─── Determine visual state ─────────────────────────────────
   type ViewState =
     | "waiting"
-    | "rolling"
-    | "dice_result"
     | "choosing"
     | "animating"
     | "result";
@@ -796,19 +723,15 @@ export function ControllerPlayPage() {
     if (gameResults || state.phase === "result") return "result";
     if (showStatChanges && lastChoiceResult) return "animating";
     if (currentEvent && eventTargetPlayerId === clientId) return "choosing";
-    if (myDiceResult && !currentEvent) return "dice_result";
-    if (isMyTurn && state.phase === "rolling") return "rolling";
     return "waiting";
   }, [
     state.phase,
-    isMyTurn,
     currentEvent,
     eventTargetPlayerId,
     clientId,
     lastChoiceResult,
     showStatChanges,
     gameResults,
-    myDiceResult,
   ]);
 
   // ─── Render helpers ─────────────────────────────────────────
@@ -818,51 +741,14 @@ export function ControllerPlayPage() {
       <div style={S.waitingMsg(true)}>
         {state.phase === "lobby"
           ? "ゲーム開始を待っています..."
-          : `${currentTurnPlayer?.name ?? "..."}のターン中...`}
+          : isMyTurn
+            ? "イベントを読み込み中..."
+            : `${currentTurnPlayer?.name ?? "..."}が選択中...`}
       </div>
     </div>
   );
 
-  const renderRolling = () => (
-    <div style={S.card}>
-      <div style={{ textAlign: "center", padding: "16px 0" }}>
-        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
-          あなたのターン!
-        </div>
-        <button
-          style={{
-            ...S.diceButton(accentColor),
-            ...(rolling
-              ? { animation: "diceShake 0.3s ease-in-out infinite" }
-              : {}),
-          }}
-          onClick={handleRoll}
-          disabled={rolling}
-        >
-          {rolling ? "..." : "\u{1F3B2}\u0020振る"}
-        </button>
-        <div style={{ fontSize: 14, color: "#9ca3af", marginTop: 8 }}>
-          タップしてサイコロを振ろう
-        </div>
-      </div>
-    </div>
-  );
 
-  const renderDiceResult = () => {
-    if (!myDiceResult) return null;
-    return (
-      <div style={S.card}>
-        <div style={S.diceResult}>
-          <div style={{ ...S.diceNumber, color: accentColor }}>
-            {myDiceResult.value}
-          </div>
-          <div style={S.diceAdvanced}>
-            {myDiceResult.squares}マス進む
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   const renderChoosing = () => {
     if (!currentEvent) return null;
@@ -1080,8 +966,6 @@ export function ControllerPlayPage() {
       {/* Main content area */}
       <div style={S.section}>
         {viewState === "waiting" && renderWaiting()}
-        {viewState === "rolling" && renderRolling()}
-        {viewState === "dice_result" && renderDiceResult()}
         {viewState === "choosing" && renderChoosing()}
         {viewState === "animating" && renderAnimating()}
         {viewState === "result" && renderResult()}
