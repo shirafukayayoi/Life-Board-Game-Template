@@ -51,6 +51,13 @@ export type JobType =
   | "retail"
   | "intern"
   | "side_biz";
+export type Faculty =
+  | "humanities"
+  | "science"
+  | "education"
+  | "medical"
+  | "arts_sports";
+export type CareerPath = "standard" | "grad_school" | "entrepreneur";
 
 export interface SpecialFlags {
   living_alone: boolean;
@@ -60,6 +67,9 @@ export interface SpecialFlags {
   on_leave: boolean;
   in_seminar: boolean;
   teaching_cert: boolean;
+  cheating: boolean;
+  career_path: CareerPath | null;
+  career_failed: boolean;
   club_type: ClubType | null;
   job_type: JobType | null;
 }
@@ -73,6 +83,15 @@ export type FlagEffects = Partial<SpecialFlags>;
 export interface ChoiceCondition {
   minStats?: Partial<ResourceStats & ExperienceStats>;
   requiredFlags?: Partial<SpecialFlags>;
+  requiredAnyFlags?: Partial<SpecialFlags>[];
+  minRound?: number;
+  faculty?: Faculty;
+}
+
+export interface DynamicRandomChance {
+  formula: "romance_success";
+  onSuccess?: StatEffects;
+  onFailure?: StatEffects;
 }
 
 // ─── Event Types ──────────────────────────────────────────────────
@@ -82,6 +101,7 @@ export interface EventChoice {
   description?: string;
   effects?: StatEffects;
   flagEffects?: FlagEffects;
+  setFlags?: FlagEffects;
   condition?: ChoiceCondition;
   tone?: string;
   preview?: {
@@ -94,6 +114,12 @@ export interface EventChoice {
   randomChance?: number;
   randomBonusEffects?: StatEffects;
   randomPenaltyEffects?: StatEffects;
+  dynamicRandomChance?: DynamicRandomChance;
+  cheatAction?: boolean;
+  badLuckDelta?: number;
+  branchRoute?: string;
+  weight?: number;
+  polarity?: "positive" | "negative" | "mixed";
 }
 
 export interface ConditionalVariant {
@@ -111,6 +137,11 @@ export interface GameEvent {
   label?: string;
   theme?: string;
   category?: string;
+  pool?: "vacation" | "random";
+  vacationType?: "spring" | "summer";
+  weight?: number;
+  polarity?: "positive" | "negative" | "mixed";
+  condition?: ChoiceCondition;
   choices: EventChoice[];
   /** Alternative choice sets based on player flags/stats */
   conditionalVariants?: ConditionalVariant[];
@@ -145,43 +176,65 @@ export type Role = "host" | "display" | "controller";
 export interface Player {
   id: string;
   name: string;
+  faculty: Faculty;
   resources: ResourceStats;
   experience: ExperienceStats;
   flags: SpecialFlags;
   position: string; // square ID, e.g. "1", "9A-1"
   lastRoll?: number;
   online: boolean;
+  badLuckPoints: number;
   /** Track which flags were collected for the ending recap */
   flagHistory: string[];
+  choiceHistory: ChoiceHistoryEntry[];
+}
+
+export interface ChoiceHistoryEntry {
+  round: number;
+  eventId: string;
+  eventTitle: string;
+  choiceId: string;
+  choiceLabel: string;
+  effects: StatEffects;
+  flagEffects?: FlagEffects;
+  submittedBy?: "controller" | "host";
 }
 
 // ─── Season / Round ───────────────────────────────────────────────
 export type Season = "spring" | "summer" | "autumn" | "winter";
 
 export interface RoundInfo {
-  round: number; // 1-16
+  round: number; // 1-48 for board mode, 1-16 for life-map mode
   year: 1 | 2 | 3 | 4;
   season: Season;
-  label: string; // e.g. "1年 春"
+  label: string; // e.g. "1年 4月"
 }
 
-const SEASON_ORDER: Season[] = ["spring", "summer", "autumn", "winter"];
 const SEASON_LABELS: Record<Season, string> = {
   spring: "春",
   summer: "夏",
   autumn: "秋",
   winter: "冬",
 };
+const ACADEMIC_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
+
+function monthToSeason(month: number): Season {
+  if (month >= 3 && month <= 5) return "spring";
+  if (month >= 6 && month <= 8) return "summer";
+  if (month >= 9 && month <= 11) return "autumn";
+  return "winter";
+}
 
 export function getRoundInfo(round: number): RoundInfo {
-  const clamped = Math.max(1, Math.min(16, round));
-  const year = (Math.ceil(clamped / 4) as 1 | 2 | 3 | 4);
-  const season = SEASON_ORDER[(clamped - 1) % 4];
+  const clamped = Math.max(1, Math.min(48, round));
+  const year = (Math.ceil(clamped / 12) as 1 | 2 | 3 | 4);
+  const month = ACADEMIC_MONTHS[(clamped - 1) % 12];
+  const season = monthToSeason(month);
   return {
     round: clamped,
     year,
     season,
-    label: `${year}年 ${SEASON_LABELS[season]}`,
+    label: `${year}年 ${month}月（${SEASON_LABELS[season]}）`,
   };
 }
 
@@ -265,7 +318,7 @@ export interface LastRoll {
 export interface GameState {
   mode?: GameMode;
   phase: GamePhase;
-  currentRound: number; // 1-16
+  currentRound: number; // 1-48 for board mode, 1-16 for life-map mode
   players: Player[];
   turnIndex: number;
   /** Tracks which players have completed their turn this round */
@@ -277,6 +330,10 @@ export interface GameState {
   availableChoiceIds: string[];
   /** Last choice result for animation display */
   lastChoiceResult: ChoiceResult | null;
+  fallbackMode?: boolean;
+  startedAt?: number | null;
+  turnStartedAt?: number | null;
+  roundDurations?: RoundDuration[];
   currentSeasonIndex?: number;
   lifePlayers?: TimelineLifePlayer[];
   lifeMapSquares?: LifeMapSquare[];
@@ -294,6 +351,22 @@ export interface ChoiceResult {
   flagEffects?: FlagEffects;
   tone?: string;
   storyTags?: string[];
+  randomOutcome?: "success" | "failure" | "cheat_exposed" | "cheat_hidden";
+}
+
+export interface RoundDuration {
+  round: number;
+  playerId: string;
+  playerName: string;
+  durationSeconds: number;
+}
+
+export interface HostManagedPlayer {
+  id: string;
+  name: string;
+  faculty: Faculty;
+  passkey: string;
+  online: boolean;
 }
 
 // ─── Ending Types ─────────────────────────────────────────────────
@@ -302,6 +375,21 @@ export interface Ending {
   title: string;
   emoji: string;
   description: string;
+  flavorText?: string;
+}
+
+export interface ReflectionQuestions {
+  factor: string;
+  turning_point: string;
+  alternative: string;
+}
+
+export interface ScoreBreakdown {
+  experience: number;
+  health: number;
+  money: number;
+  credits: number;
+  total: number;
 }
 
 export interface PlayerResult {
@@ -314,16 +402,21 @@ export interface PlayerResult {
   lifeArchetype?: Ending;
   storyAward?: Ending;
   summary?: string;
+  scoreBreakdown?: ScoreBreakdown;
   resources: ResourceStats;
   experience: ExperienceStats;
   flags: SpecialFlags;
   flagHistory: string[];
   storyTags?: string[];
+  choiceHistory?: ChoiceHistoryEntry[];
+  reflection?: ReflectionQuestions;
 }
 
 // ─── Messages ─────────────────────────────────────────────────────
 export type ServerMessage =
-  | { type: "welcome"; clientId: string; hostId?: string; urls?: string[] }
+  | { type: "welcome"; clientId: string; hostId?: string; urls?: string[]; passkey?: string }
+  | { type: "auth_error"; message: string }
+  | { type: "host_player_management"; players: HostManagedPlayer[] }
   | { type: "state"; state: GameState }
   | { type: "system"; message: string }
   | { type: "navigate"; url: string; targetRoles: Role[] }
@@ -343,13 +436,18 @@ export type ServerMessage =
       result: ChoiceResult;
     }
   | { type: "round_end"; round: number; roundInfo: RoundInfo }
+  | { type: "player_removed"; playerId: string; playerName: string }
   | { type: "game_result"; results: PlayerResult[] };
 
 export type ClientMessage =
-  | { type: "join"; name: string; role: Role; clientId?: string }
+  | { type: "join"; name: string; role: Role; clientId?: string; passkey?: string; faculty?: Faculty }
   | { type: "start_game" }
   | { type: "start_life_map_game" }
   | { type: "reset_game" }
+  | { type: "remove_player"; playerId: string }
+  | { type: "set_fallback_mode"; enabled: boolean }
+  | { type: "host_player_roll"; playerId: string }
+  | { type: "host_player_choice"; playerId: string; choiceId: string }
   | { type: "player_roll" }
   | { type: "player_choice"; choiceId: string }
   | { type: "request_state" };
@@ -378,6 +476,9 @@ export function defaultFlags(): SpecialFlags {
     on_leave: false,
     in_seminar: false,
     teaching_cert: false,
+    cheating: false,
+    career_path: null,
+    career_failed: false,
     club_type: null,
     job_type: null,
   };
@@ -396,6 +497,10 @@ export function defaultGameState(): GameState {
     currentEvent: null,
     availableChoiceIds: [],
     lastChoiceResult: null,
+    fallbackMode: false,
+    startedAt: null,
+    turnStartedAt: null,
+    roundDurations: [],
     currentSeasonIndex: 0,
     lifePlayers: [],
     lifeMapSquares: [],
@@ -431,18 +536,18 @@ export function clampExperience(key: ExperienceKey, value: number): number {
   return Math.max(range.min, Math.min(range.max, value));
 }
 
-// ─── Dice → Squares Moved ─────────────────────────────────────────
-/** Dice roll 1-3, advance by the same number */
+// ─── Month Advance ────────────────────────────────────────────────
+/** Board mode advances one calendar month at a time. */
 export function diceToSquares(roll: number): number {
   return roll;
 }
 
 // ─── Credit Checkpoints ───────────────────────────────────────────
 export const CREDIT_CHECKPOINTS: Record<number, number> = {
-  4: 20,  // End of Year 1
-  8: 50,  // End of Year 2
-  12: 80, // End of Year 3
-  16: 110, // Graduation
+  12: 30,  // End of Year 1
+  24: 62,  // End of Year 2
+  36: 96,  // End of Year 3
+  48: 124, // Graduation
 };
 
 // ─── Player Colors ────────────────────────────────────────────────

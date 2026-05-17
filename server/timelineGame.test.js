@@ -4,8 +4,11 @@ import assert from "node:assert/strict";
 import {
   createTimelinePlayer,
   generateTimelineResults,
+  getVisibleStatEffects,
   getChoicePreview,
+  normalizeChoiceEffects,
 } from "./timelineGame.js";
+import { TIMELINE_EVENTS } from "./timelineEvents.js";
 
 test("social burnout player can be retained without collapsing into a plain ryuunen ending", () => {
   const player = createTimelinePlayer("ren", "蓮");
@@ -123,4 +126,32 @@ test("choice preview exposes mood and risk without numeric effects", () => {
     storyTags: ["学祭", "夜型"],
   });
   assert.equal(Object.hasOwn(preview, "effects"), false);
+});
+
+test("every timeline choice has a normalized net positive effect budget", () => {
+  for (const event of TIMELINE_EVENTS) {
+    for (const choice of event.choices) {
+      const effects = normalizeChoiceEffects(choice.effects);
+      const total = Object.values(effects).reduce((sum, value) => sum + value, 0);
+
+      assert.equal(total, 3, `${choice.id} should sum to +3`);
+    }
+  }
+});
+
+test("life-map effects become visible player stat changes including credits", () => {
+  const lifeEffects = normalizeChoiceEffects({
+    academic: 3,
+    stability: 2,
+    freedom: -1,
+    selfhood: 1,
+  });
+  const visibleEffects = getVisibleStatEffects(lifeEffects);
+  const total = Object.values(visibleEffects).reduce((sum, value) => sum + value, 0);
+
+  assert.equal(total, 3);
+  assert.equal(visibleEffects.credits, 1);
+  assert.equal(visibleEffects.work_tolerance, 2);
+  assert.equal(visibleEffects.time, -1);
+  assert.equal(visibleEffects.intellect, 1);
 });

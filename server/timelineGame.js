@@ -14,6 +14,18 @@ const DEFAULT_TRAITS = Object.fromEntries(
   LIFE_TRAIT_KEYS.map((key) => [key, 6]),
 );
 
+const VISIBLE_STAT_BY_LIFE_TRAIT = {
+  academic: "credits",
+  stability: "work_tolerance",
+  wellbeing: "health",
+  relationships: "connections",
+  freedom: "time",
+  challenge: "action_power",
+  career: "money",
+  memory: "romance_exp",
+  selfhood: "intellect",
+};
+
 const ACADEMIC_STATUSES = {
   graduated: {
     id: "graduated",
@@ -112,6 +124,74 @@ function clampTrait(value) {
   return Math.max(0, Math.min(20, value));
 }
 
+function sumEffectValues(effects) {
+  return Object.values(effects).reduce((total, value) => total + value, 0);
+}
+
+export function normalizeChoiceEffects(effects = {}, targetTotal = 3) {
+  const normalized = {};
+  for (const [key, value] of Object.entries(effects)) {
+    if (!LIFE_TRAIT_KEYS.includes(key) || typeof value !== "number" || value === 0) continue;
+    normalized[key] = value;
+  }
+
+  const keys = Object.keys(normalized);
+  if (keys.length === 0) {
+    return { academic: targetTotal };
+  }
+
+  let total = sumEffectValues(normalized);
+
+  if (total > targetTotal) {
+    let excess = total - targetTotal;
+    while (excess > 0) {
+      const reducibleKeys = Object.keys(normalized)
+        .filter((key) => normalized[key] > 1)
+        .sort((a, b) => normalized[b] - normalized[a]);
+      if (reducibleKeys.length === 0) break;
+
+      for (const key of reducibleKeys) {
+        const step = Math.min(normalized[key] - 1, excess);
+        normalized[key] -= step;
+        excess -= step;
+        if (excess === 0) break;
+      }
+    }
+
+    if (excess > 0) {
+      const fallbackKey = Object.keys(normalized).sort((a, b) => normalized[b] - normalized[a])[0];
+      normalized[fallbackKey] -= excess;
+    }
+  }
+
+  total = sumEffectValues(normalized);
+  if (total < targetTotal) {
+    const deficit = targetTotal - total;
+    const targetKey = Object.keys(normalized)
+      .filter((key) => normalized[key] > 0)
+      .sort((a, b) => normalized[b] - normalized[a])[0] ?? Object.keys(normalized)[0];
+    normalized[targetKey] += deficit;
+  }
+
+  for (const key of Object.keys(normalized)) {
+    if (normalized[key] === 0) {
+      delete normalized[key];
+    }
+  }
+
+  return normalized;
+}
+
+export function getVisibleStatEffects(lifeEffects = {}) {
+  const visibleEffects = {};
+  for (const [lifeTrait, value] of Object.entries(lifeEffects)) {
+    const statKey = VISIBLE_STAT_BY_LIFE_TRAIT[lifeTrait];
+    if (!statKey) continue;
+    visibleEffects[statKey] = (visibleEffects[statKey] ?? 0) + value;
+  }
+  return visibleEffects;
+}
+
 export function createTimelinePlayer(id, name) {
   return {
     id,
@@ -135,6 +215,7 @@ export function getChoicePreview(choice) {
 }
 
 export function applyTimelineChoice(player, seasonEvent, choice) {
+  const normalizedEffects = normalizeChoiceEffects(choice.effects ?? {});
   const next = {
     ...player,
     traits: { ...player.traits },
@@ -142,8 +223,7 @@ export function applyTimelineChoice(player, seasonEvent, choice) {
     history: [...player.history],
   };
 
-  for (const [key, delta] of Object.entries(choice.effects ?? {})) {
-    if (!LIFE_TRAIT_KEYS.includes(key)) continue;
+  for (const [key, delta] of Object.entries(normalizedEffects)) {
     next.traits[key] = clampTrait((next.traits[key] ?? 0) + delta);
   }
 

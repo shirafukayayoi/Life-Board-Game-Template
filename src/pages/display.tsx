@@ -1,12 +1,27 @@
 import { Fragment, StrictMode, type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import confetti from "canvas-confetti";
+import { QRCodeCanvas } from "qrcode.react";
+import {
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  ResponsiveContainer,
+} from "recharts";
 import { MountainBoard, type CameraMode } from "../components/MountainBoard";
 import "../index.css";
 import "../App.css";
+import { useGameSfx } from "../hooks/useGameSfx";
 import {
   colorForPlayer,
+  EXPERIENCE_KEYS,
+  EXPERIENCE_LABELS,
+  EXPERIENCE_RANGES,
   getRoundInfo,
+  RESOURCE_KEYS,
+  RESOURCE_LABELS,
   type ClientMessage,
   type EventChoice,
   type GameEvent,
@@ -140,6 +155,37 @@ function topLifeTraits(lifePlayer?: TimelineLifePlayer) {
 
 function initials(name: string) {
   return name.trim().slice(0, 2).toUpperCase() || "?";
+}
+
+const SCORE_BREAKDOWN_LABELS = {
+  experience: "経験",
+  health: "体力",
+  money: "お金",
+  credits: "単位",
+  total: "合計",
+} as const;
+
+function resultTitle(result: PlayerResult) {
+  return result.academicStatus
+    ? result.storyAward?.title
+    : result.ending?.title;
+}
+
+function resultDescription(result: PlayerResult) {
+  return result.summary ?? result.ending?.description;
+}
+
+function buildExperienceRadarData(results: PlayerResult[]) {
+  return EXPERIENCE_KEYS.map((key) => {
+    const row: Record<string, string | number> = {
+      stat: EXPERIENCE_LABELS[key],
+      max: EXPERIENCE_RANGES[key].max,
+    };
+    for (const result of results) {
+      row[result.playerId] = result.experience?.[key] ?? 0;
+    }
+    return row;
+  });
 }
 
 const TONE_SHORT_LABELS: Record<string, string> = {
@@ -357,6 +403,7 @@ function LifeMapStage({ state }: { state: GameState }) {
 // ═══════════════════════════════════════════════════════════════════
 
 export function DisplayPage() {
+  const { play: playSfx } = useGameSfx();
   const [status, setStatus] = useState("接続準備中");
   const [state, setState] = useState<GameState>(defaultGameState);
 
@@ -382,12 +429,17 @@ export function DisplayPage() {
 
   const wsRef = useRef<WebSocket | null>(null);
   const stateRef = useRef<GameState>(state);
+  const eventOverlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hostUrl = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("host") || window.location.origin;
   }, []);
   const targetUrl = useMemo(() => wsUrlFromInput(hostUrl), [hostUrl]);
+  const controllerEntryUrl = useMemo(
+    () => `${hostUrl}/controller.html?host=${encodeURIComponent(hostUrl)}`,
+    [hostUrl],
+  );
   const statusLabel = targetUrl ? status : "接続先URLが不正です";
 
   // Current player info
@@ -426,6 +478,10 @@ export function DisplayPage() {
 
   // Fade out event overlay after choice result
   const fadeOutEvent = useCallback(() => {
+    if (eventOverlayTimerRef.current) {
+      clearTimeout(eventOverlayTimerRef.current);
+      eventOverlayTimerRef.current = null;
+    }
     setEventFading(true);
     const timer = setTimeout(() => {
       setShowEvent(null);
@@ -436,6 +492,15 @@ export function DisplayPage() {
     }, 500);
     return () => clearTimeout(timer);
   }, []);
+
+  const scheduleEventOverlayDismiss = useCallback(() => {
+    if (eventOverlayTimerRef.current) {
+      clearTimeout(eventOverlayTimerRef.current);
+    }
+    eventOverlayTimerRef.current = setTimeout(() => {
+      fadeOutEvent();
+    }, 5000);
+  }, [fadeOutEvent]);
 
   // WebSocket connection
   useEffect(() => {
@@ -478,6 +543,7 @@ export function DisplayPage() {
 
         case "show_event":
           setStatus("接続済み");
+          playSfx("event");
           // Delay event display so dice result is visible
           setTimeout(() => {
             setDiceRoll(null);
@@ -491,15 +557,18 @@ export function DisplayPage() {
 
         case "show_life_event":
           setStatus("接続済み");
+          playSfx("event");
           setDiceRoll(null);
           setShowEvent(message.event);
           setEventPlayerId(null);
           setEventAvailableIds(message.availableChoiceIds);
           setChoiceResult(null);
           setEventFading(false);
+          scheduleEventOverlayDismiss();
           break;
 
         case "choice_result":
+          playSfx("choice_result");
           setChoiceResult(message.result);
           if (stateRef.current.mode !== "life_map") {
             setTimeout(() => {
@@ -509,11 +578,13 @@ export function DisplayPage() {
           break;
 
         case "round_end":
+          playSfx("round_end");
           setRoundEndInfo(message.roundInfo);
           setTimeout(() => setRoundEndInfo(null), 3000);
           break;
 
         case "game_result":
+          playSfx("game_result");
           setGameResults(message.results);
           // Show intro for 3s, then reveal content
           setTimeout(() => {
@@ -537,8 +608,13 @@ export function DisplayPage() {
     socket.onclose = () => setStatus("切断されました");
     socket.onerror = () => setStatus("接続エラー");
 
-    return () => socket.close();
-  }, [targetUrl, fadeOutEvent]);
+    return () => {
+      if (eventOverlayTimerRef.current) {
+        clearTimeout(eventOverlayTimerRef.current);
+      }
+      socket.close();
+    };
+  }, [targetUrl, fadeOutEvent, scheduleEventOverlayDismiss, playSfx]);
 
   const requestFullscreen = async () => {
     try {
@@ -551,8 +627,9 @@ export function DisplayPage() {
   // ─── Result screen ──────────────────────────────────────────────
   if (gameResults) {
     const isLifeMapResult = gameResults.some((result) => result.academicStatus);
+    const radarData = buildExperienceRadarData(gameResults);
     return (
-      <div className="result-screen">
+      <div className={`result-screen ${showResultContent ? "result-screen--revealed" : ""}`}>
         {!showResultContent && (
           <div className="result-intro">4年間が過ぎた...</div>
         )}
@@ -561,10 +638,52 @@ export function DisplayPage() {
             <h1 style={{ textAlign: "center", marginBottom: 8 }}>
               {isLifeMapResult ? "それぞれの4年間" : "卒業 - 最終結果"}
             </h1>
-            {gameResults.map((result) => (
+            <div className="result-radar-card">
+              <div className="result-section-title">経験値バランス</div>
+              <div className="result-radar-wrap">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="72%">
+                    <PolarGrid stroke="rgba(255, 255, 255, 0.16)" />
+                    <PolarAngleAxis
+                      dataKey="stat"
+                      tick={{ fill: "var(--text-secondary)", fontSize: 12 }}
+                    />
+                    <PolarRadiusAxis
+                      domain={[0, 10]}
+                      tick={false}
+                      axisLine={false}
+                    />
+                    {gameResults.map((result, index) => {
+                      const color = colorForPlayer(index);
+                      return (
+                        <Radar
+                          key={result.playerId}
+                          name={result.playerName}
+                          dataKey={result.playerId}
+                          stroke={color}
+                          fill={color}
+                          fillOpacity={gameResults.length === 1 ? 0.28 : 0.12}
+                          strokeWidth={2}
+                        />
+                      );
+                    })}
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="result-radar-legend">
+                {gameResults.map((result, index) => (
+                  <span key={result.playerId}>
+                    <i style={{ background: colorForPlayer(index) }} />
+                    {result.playerName}
+                  </span>
+                ))}
+              </div>
+            </div>
+            {gameResults.map((result, index) => (
               <div
                 key={result.playerId}
                 className={`result-player ${result.rank === 1 ? "result-player--winner" : ""}`}
+                style={{ "--player-color": colorForPlayer(index) } as CSSProperties}
               >
                 {result.rank !== undefined ? (
                   <div
@@ -578,20 +697,23 @@ export function DisplayPage() {
                 <div className="result-info">
                   <div className="result-ending-header">
                     <span className="result-emoji">
-                      {result.academicStatus ? "\u{1F393}" : result.ending?.emoji}
+                      {result.academicStatus ? "\u{1F393}" : result.ending?.emoji ?? "\u{1F3C1}"}
                     </span>
                     <span className="result-player-name">
                       {result.playerName}
                     </span>
                   </div>
                   <div className="result-ending-title">
-                    {result.academicStatus
-                      ? result.storyAward?.title
-                      : result.ending?.title}
+                    {resultTitle(result) ?? "キャンパスライフ完走"}
                   </div>
                   <div className="result-ending-desc">
-                    {result.summary ?? result.ending?.description}
+                    {resultDescription(result) ?? "4年間の選択がここに刻まれました。"}
                   </div>
+                  {result.ending?.flavorText && (
+                    <div className="result-flavor-text">
+                      {result.ending.flavorText}
+                    </div>
+                  )}
                   <div className="result-mini-stats">
                     {result.academicStatus ? (
                       <>
@@ -617,10 +739,37 @@ export function DisplayPage() {
                       </>
                     )}
                   </div>
+                  <div className="result-breakdown-grid">
+                    <div className="result-breakdown">
+                      <div className="result-section-title">リソース</div>
+                      <div className="result-chip-row">
+                        {RESOURCE_KEYS.map((key) => (
+                          <span key={key} className="result-stat-chip">
+                            {RESOURCE_LABELS[key]}: {result.resources?.[key] ?? 0}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    {result.scoreBreakdown && (
+                      <div className="result-breakdown">
+                        <div className="result-section-title">スコア内訳</div>
+                        <div className="result-chip-row">
+                          {Object.entries(result.scoreBreakdown).map(([key, value]) => (
+                            <span
+                              key={key}
+                              className={`result-stat-chip ${key === "total" ? "result-stat-chip--total" : ""}`}
+                            >
+                              {SCORE_BREAKDOWN_LABELS[key as keyof typeof SCORE_BREAKDOWN_LABELS]}: {value}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 {!result.academicStatus && (
                   <div className="result-score">
-                    <div>{result.score}</div>
+                    <div>{result.score ?? result.scoreBreakdown?.total ?? "-"}</div>
                     <div className="result-score__label">SCORE</div>
                   </div>
                 )}
@@ -678,10 +827,17 @@ export function DisplayPage() {
         </div>
 
         <div className="display-header__right">
-          <span>Round {state.currentRound}/16</span>
+          <span>
+            {state.mode === "life_map"
+              ? `Season ${state.currentRound}/16`
+              : `Month ${state.currentRound}/48`}
+          </span>
           <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>
             {statusLabel}
           </span>
+          <div className="display-header__qr" title="Controller QR">
+            <QRCodeCanvas value={controllerEntryUrl} size={42} />
+          </div>
           <button
             className="display-header__fullscreen"
             onClick={requestFullscreen}
@@ -799,6 +955,20 @@ export function DisplayPage() {
                 </div>
                 {isLifeMapMode ? (
                   <div className="display-player-card__life">
+                    <div className="display-player-card__stats">
+                      <span className="display-player-card__stat">
+                        ⏱ {player.resources.time}
+                      </span>
+                      <span className="display-player-card__stat">
+                        💰 {player.resources.money}
+                      </span>
+                      <span className="display-player-card__stat">
+                        ❤️ {player.resources.health}
+                      </span>
+                      <span className="display-player-card__stat">
+                        📚 {player.resources.credits}
+                      </span>
+                    </div>
                     <div className="display-player-card__life-tags">
                       {traitLabels.map((label) => (
                         <span key={label}>{label}</span>
@@ -848,18 +1018,18 @@ export function DisplayPage() {
         </div>
       </div>
 
-      {/* ── Dice Roll Overlay ────────────────────────────────────── */}
+      {/* ── Month Reveal Overlay ─────────────────────────────────── */}
       {diceRoll && !showEvent && (
         <div className="round-end-banner">
           <div className="round-end-card" style={{ padding: "32px 48px" }}>
             <div style={{ fontSize: 14, color: "#a0a0b0", marginBottom: 8 }}>
-              {diceRoll.name} がサイコロを振った
+              {diceRoll.name} の今月イベント
             </div>
-            <div style={{ fontSize: 72, fontWeight: 800, lineHeight: 1 }}>
-              {diceRoll.value}
+            <div style={{ fontSize: 48, fontWeight: 800, lineHeight: 1 }}>
+              Month {state.currentRound}
             </div>
             <div style={{ fontSize: 18, color: "#a0a0b0", marginTop: 8 }}>
-              {diceRoll.squares}マス進む
+              選択へ進む
             </div>
           </div>
         </div>
@@ -870,7 +1040,7 @@ export function DisplayPage() {
         <div
           className={`event-overlay ${eventFading ? "event-overlay--fadeout" : ""}`}
         >
-          <div className="event-card">
+          <div className={`event-card ${showEvent.category ? "event-card--major" : ""}`}>
             {showEvent.category && (
               <div className="event-card__category">{showEvent.category}</div>
             )}

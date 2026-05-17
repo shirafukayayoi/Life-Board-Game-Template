@@ -9,6 +9,7 @@ import {
 import { createRoot } from "react-dom/client";
 import {
   type ClientMessage,
+  type Faculty,
   type GameState,
   type ServerMessage,
   colorForPlayer,
@@ -16,6 +17,21 @@ import {
   wsUrlFromInput,
   defaultGameState,
 } from "../domain/gameShared";
+
+const FACULTY_LABELS: Record<Faculty, string> = {
+  humanities: "文系",
+  science: "理系",
+  education: "教育",
+  medical: "医療",
+  arts_sports: "芸術・スポーツ",
+};
+
+const FACULTY_OPTIONS = Object.entries(FACULTY_LABELS) as [Faculty, string][];
+
+function readStoredFaculty(): Faculty {
+  const storedFaculty = sessionStorage.getItem("clg_faculty");
+  return FACULTY_OPTIONS.find(([value]) => value === storedFaculty)?.[0] ?? "humanities";
+}
 
 // ─── Styles ──────────────────────────────────────────────────────
 const S = {
@@ -67,6 +83,18 @@ const S = {
     boxSizing: "border-box" as const,
     marginBottom: 12,
     background: "#f9fafb",
+  },
+  select: {
+    width: "100%",
+    padding: "14px 16px",
+    fontSize: 16,
+    border: "1px solid #d1d5db",
+    borderRadius: 12,
+    outline: "none",
+    boxSizing: "border-box" as const,
+    marginBottom: 12,
+    background: "#f9fafb",
+    color: "#1a1a2e",
   },
   joinBtn: (disabled: boolean) => ({
     width: "100%",
@@ -159,11 +187,32 @@ const S = {
     color: "#9ca3af",
     padding: "6px 0",
   },
+  passkeyBox: {
+    marginTop: 14,
+    padding: "14px 16px",
+    borderRadius: 12,
+    background: "#f3f4f6",
+    border: "1px solid #e5e7eb",
+    textAlign: "center" as const,
+  },
+  passkeyValue: {
+    fontSize: 28,
+    fontWeight: 800,
+    letterSpacing: "0.18em",
+    color: "#374151",
+  },
 } as const;
 
 // ─── Controller Lobby Page ──────────────────────────────────────
 export function ControllerLobbyPage() {
   const [name, setName] = useState(sessionStorage.getItem("clg_name") ?? "");
+  const [faculty, setFaculty] = useState<Faculty>(readStoredFaculty);
+  const [passkey, setPasskey] = useState(
+    sessionStorage.getItem("clg_passkey") ?? ""
+  );
+  const [issuedPasskey, setIssuedPasskey] = useState(
+    sessionStorage.getItem("clg_passkey") ?? ""
+  );
   const [state, setState] = useState<GameState>(defaultGameState());
   const [status, setStatus] = useState("未接続");
   const [connected, setConnected] = useState(false);
@@ -208,14 +257,21 @@ export function ControllerLobbyPage() {
     wsRef.current = socket;
 
     socket.onopen = () => {
+      const trimmedPasskey = passkey.trim();
       const payload: ClientMessage = {
         type: "join",
         name: name.trim(),
         role: "controller",
         clientId: sessionStorage.getItem("clg_controller_id") ?? undefined,
+        faculty,
+        passkey: trimmedPasskey || undefined,
       };
       socket.send(JSON.stringify(payload));
       sessionStorage.setItem("clg_name", name.trim());
+      sessionStorage.setItem("clg_faculty", faculty);
+      if (trimmedPasskey) {
+        sessionStorage.setItem("clg_passkey", trimmedPasskey);
+      }
     };
 
     socket.onmessage = (ev) => {
@@ -225,10 +281,25 @@ export function ControllerLobbyPage() {
         case "welcome":
           setClientId(msg.clientId);
           sessionStorage.setItem("clg_controller_id", msg.clientId);
+          if (msg.passkey) {
+            setPasskey(msg.passkey);
+            setIssuedPasskey(msg.passkey);
+            sessionStorage.setItem("clg_passkey", msg.passkey);
+          }
           setConnected(true);
           setJoined(true);
           setJoining(false);
           setStatus("接続済み");
+          break;
+
+        case "auth_error":
+          sessionStorage.removeItem("clg_controller_id");
+          setClientId(null);
+          setConnected(false);
+          setJoined(false);
+          setJoining(false);
+          setStatus(msg.message);
+          wsRef.current?.close();
           break;
 
         case "state":
@@ -243,6 +314,19 @@ export function ControllerLobbyPage() {
           if (msg.targetRoles.includes("controller")) {
             navigateToPlay();
           }
+          break;
+
+        case "player_removed":
+          sessionStorage.removeItem("clg_controller_id");
+          sessionStorage.removeItem("clg_name");
+          sessionStorage.removeItem("clg_passkey");
+          setClientId(null);
+          setIssuedPasskey("");
+          setPasskey("");
+          setJoined(false);
+          setConnected(false);
+          setStatus("ホストがこのプレイヤーを削除しました");
+          wsRef.current?.close();
           break;
       }
     };
@@ -259,7 +343,7 @@ export function ControllerLobbyPage() {
       setJoining(false);
       wsRef.current = null;
     };
-  }, [hostUrl, name, navigateToPlay]);
+  }, [faculty, hostUrl, name, navigateToPlay, passkey]);
 
   // Auto-connect if name is saved
   useEffect(() => {
@@ -334,6 +418,27 @@ export function ControllerLobbyPage() {
             maxLength={12}
             autoComplete="off"
           />
+          <select
+            style={S.select}
+            value={faculty}
+            onChange={(e) => setFaculty(e.target.value as Faculty)}
+          >
+            {FACULTY_OPTIONS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <input
+            style={S.input}
+            type="text"
+            inputMode="numeric"
+            placeholder="再接続パスキー（任意）"
+            value={passkey}
+            onChange={(e) => setPasskey(e.target.value)}
+            maxLength={12}
+            autoComplete="off"
+          />
           <button
             type="submit"
             style={S.joinBtn(!name.trim() || joining)}
@@ -360,6 +465,14 @@ export function ControllerLobbyPage() {
             <div style={{ fontSize: 14, color: "#6b7280" }}>
               ホストがゲームを開始するまで待ってください
             </div>
+            {issuedPasskey && (
+              <div style={S.passkeyBox}>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
+                  再接続パスキー
+                </div>
+                <div style={S.passkeyValue}>{issuedPasskey}</div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -412,6 +525,14 @@ export function ControllerLobbyPage() {
         <div style={S.infoRow}>
           <span>ID</span>
           <span style={{ color: "#374151" }}>{clientId ?? "-"}</span>
+        </div>
+        <div style={S.infoRow}>
+          <span>学部</span>
+          <span style={{ color: "#374151" }}>{FACULTY_LABELS[faculty]}</span>
+        </div>
+        <div style={S.infoRow}>
+          <span>パスキー</span>
+          <span style={{ color: "#374151" }}>{issuedPasskey || passkey || "-"}</span>
         </div>
       </div>
     </div>

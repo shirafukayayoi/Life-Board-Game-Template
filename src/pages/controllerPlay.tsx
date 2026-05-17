@@ -68,6 +68,14 @@ const STAT_COLORS: Record<string, string> = {
   romance_exp: "#e11d48",
 };
 
+const SCORE_BREAKDOWN_LABELS = {
+  experience: "経験",
+  health: "体力",
+  money: "お金",
+  credits: "単位",
+  total: "合計",
+} as const;
+
 // ─── Styles ──────────────────────────────────────────────────────
 const S = {
   root: {
@@ -605,6 +613,7 @@ export function ControllerPlayPage() {
   const [lastChoiceResult, setLastChoiceResult] =
     useState<ChoiceResult | null>(null);
   const [gameResults, setGameResults] = useState<PlayerResult[] | null>(null);
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
 
   // UI state
   const [confirmChoice, setConfirmChoice] = useState<string | null>(null);
@@ -619,6 +628,7 @@ export function ControllerPlayPage() {
   const showStatChangesRef = useRef(showStatChanges);
   showStatChangesRef.current = showStatChanges;
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const removedByHostRef = useRef(false);
 
   const hostUrl = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -687,6 +697,7 @@ export function ControllerPlayPage() {
         name: name.trim(),
         role: "controller",
         clientId: sessionStorage.getItem("clg_controller_id") ?? undefined,
+        passkey: sessionStorage.getItem("clg_passkey") ?? undefined,
       };
       socket.send(JSON.stringify(payload));
     };
@@ -698,8 +709,19 @@ export function ControllerPlayPage() {
         case "welcome":
           setClientId(msg.clientId);
           sessionStorage.setItem("clg_controller_id", msg.clientId);
+          if (msg.passkey) {
+            sessionStorage.setItem("clg_passkey", msg.passkey);
+          }
           setConnected(true);
           setStatus("接続済み");
+          break;
+
+        case "auth_error":
+          sessionStorage.removeItem("clg_controller_id");
+          setClientId(null);
+          setConnected(false);
+          setStatus(msg.message);
+          window.location.href = `/controller.html?host=${encodeURIComponent(hostUrl)}`;
           break;
 
         case "state": {
@@ -772,12 +794,8 @@ export function ControllerPlayPage() {
           setLastChoiceResult(msg.result);
           setCurrentEvent(null);
           setConfirmChoice(null);
-          if (isLifeMap) {
-            setShowStatChanges(false);
-          } else {
-            setShowStatChanges(true);
-            setTimeout(() => setShowStatChanges(false), 2000);
-          }
+          setShowStatChanges(true);
+          setTimeout(() => setShowStatChanges(false), isLifeMap ? 5000 : 2000);
           break;
         }
 
@@ -794,6 +812,15 @@ export function ControllerPlayPage() {
             window.location.href = msg.url;
           }
           break;
+
+        case "player_removed":
+          removedByHostRef.current = true;
+          sessionStorage.removeItem("clg_controller_id");
+          sessionStorage.removeItem("clg_name");
+          if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+          wsRef.current?.close();
+          window.location.href = `/controller.html?host=${encodeURIComponent(hostUrl)}`;
+          break;
       }
     };
 
@@ -806,6 +833,7 @@ export function ControllerPlayPage() {
       setStatus("切断されました");
       setConnected(false);
       wsRef.current = null;
+      if (removedByHostRef.current) return;
       // Auto reconnect after 3s
       reconnectTimer.current = setTimeout(connect, 3000);
     };
@@ -888,7 +916,7 @@ export function ControllerPlayPage() {
     <div style={S.card}>
       <div style={{ textAlign: "center", padding: "16px 0" }}>
         <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
-          あなたのターン!
+          あなたの月です!
         </div>
         <button
           style={{
@@ -900,10 +928,10 @@ export function ControllerPlayPage() {
           onClick={handleRoll}
           disabled={rolling}
         >
-          {rolling ? "..." : "\u{1F3B2}\u0020振る"}
+          {rolling ? "..." : "今月のイベントを開く"}
         </button>
         <div style={{ fontSize: 14, color: "#9ca3af", marginTop: 8 }}>
-          タップしてサイコロを振ろう
+          タップして今月のイベントを開こう
         </div>
       </div>
     </div>
@@ -914,11 +942,11 @@ export function ControllerPlayPage() {
     return (
       <div style={S.card}>
         <div style={S.diceResult}>
-          <div style={{ ...S.diceNumber, color: accentColor }}>
-            {myDiceResult.value}
+          <div style={{ ...S.diceNumber, color: accentColor, fontSize: 36 }}>
+            OPEN
           </div>
           <div style={S.diceAdvanced}>
-            {myDiceResult.squares}マス進む
+            今月のイベントへ
           </div>
         </div>
       </div>
@@ -1030,6 +1058,55 @@ export function ControllerPlayPage() {
     );
   };
 
+  const buildShareText = useCallback((result: PlayerResult) => {
+    const lines = [
+      "Campus Life Game",
+      `${result.playerName} の結果`,
+      result.academicStatus
+        ? `称号: ${result.storyAward?.title ?? result.lifeArchetype?.title ?? result.academicStatus.title}`
+        : `エンディング: ${result.ending?.title ?? "キャンパスライフ完走"}`,
+    ];
+
+    if (result.rank !== undefined) {
+      lines.push(`順位: ${result.rank}位`);
+    }
+    const score = result.score ?? result.scoreBreakdown?.total;
+    if (score !== undefined) {
+      lines.push(`スコア: ${score}`);
+    }
+    if (result.ending?.flavorText) {
+      lines.push(result.ending.flavorText);
+    }
+
+    return lines.join("\n");
+  }, []);
+
+  const handleShareResult = useCallback(
+    async (result: PlayerResult) => {
+      const text = buildShareText(result);
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: "Campus Life Game",
+            text,
+          });
+          setShareStatus("共有しました");
+          return;
+        }
+        await navigator.clipboard.writeText(text);
+        setShareStatus("結果をコピーしました");
+      } catch {
+        try {
+          await navigator.clipboard.writeText(text);
+          setShareStatus("結果をコピーしました");
+        } catch {
+          setShareStatus("共有できませんでした");
+        }
+      }
+    },
+    [buildShareText],
+  );
+
   const renderResult = () => {
     const results = gameResults;
     if (!results) return null;
@@ -1043,18 +1120,23 @@ export function ControllerPlayPage() {
     }));
 
     return (
-      <div style={S.card}>
+      <div style={S.card} className="controller-result-card">
         <div style={S.resultEmoji}>
-          {myResult.academicStatus ? "\u{1F393}" : myResult.ending?.emoji}
+          {myResult.academicStatus ? "\u{1F393}" : myResult.ending?.emoji ?? "\u{1F3C1}"}
         </div>
         <div style={S.resultTitle}>
           {myResult.academicStatus
-            ? myResult.storyAward?.title
-            : myResult.ending?.title}
+            ? myResult.storyAward?.title ?? myResult.lifeArchetype?.title ?? myResult.academicStatus.title
+            : myResult.ending?.title ?? "キャンパスライフ完走"}
         </div>
         <div style={S.resultDesc}>
-          {myResult.summary ?? myResult.ending?.description}
+          {myResult.summary ?? myResult.ending?.description ?? "4年間の選択がここに刻まれました。"}
         </div>
+        {myResult.ending?.flavorText && (
+          <div className="controller-result-flavor">
+            {myResult.ending.flavorText}
+          </div>
+        )}
         {myResult.rank !== undefined && (
           <div style={S.resultRank}>
             {myResult.rank}位
@@ -1071,7 +1153,7 @@ export function ControllerPlayPage() {
         >
           {myResult.academicStatus
             ? `${myResult.lifeArchetype?.title} / 学業: ${myResult.academicStatus.title}`
-            : `スコア: ${myResult.score}`}
+            : `スコア: ${myResult.score ?? myResult.scoreBreakdown?.total ?? "-"}`}
         </div>
 
         {/* Radar chart */}
@@ -1104,6 +1186,33 @@ export function ControllerPlayPage() {
               </span>
             </div>
           ))}
+        </div>
+        {myResult.scoreBreakdown && (
+          <div className="controller-score-breakdown">
+            {Object.entries(myResult.scoreBreakdown).map(([key, value]) => (
+              <span key={key}>
+                {SCORE_BREAKDOWN_LABELS[key as keyof typeof SCORE_BREAKDOWN_LABELS]}: {value}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="share-card">
+          <div>
+            <div className="share-card__title">結果をシェア</div>
+            <div className="share-card__text">
+              名前、エンディング、順位、スコアを共有できます。
+            </div>
+            {shareStatus && (
+              <div className="share-card__status">{shareStatus}</div>
+            )}
+          </div>
+          <button
+            className="share-card__button"
+            type="button"
+            onClick={() => void handleShareResult(myResult)}
+          >
+            共有
+          </button>
         </div>
       </div>
     );

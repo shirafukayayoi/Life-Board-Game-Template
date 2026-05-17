@@ -1,0 +1,308 @@
+{
+  "spring_license": {
+    "id": "spring_license",
+    "title": "運転免許合宿",
+    "description": "短期集中で免許を取る。",
+    "year": null,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "spring_license_A",
+        "label": "免許合宿に行く",
+        "effects": {
+          "money": -3,
+          "action_power": 2,
+          "health": -1
+        },
+        "flagEffects": {
+          "has_license": true
+        },
+        "polarity": "positive"
+      }
+    ],
+    "vacationType": "spring",
+    "condition": {
+      "requiredFlags": {
+        "has_license": false
+      }
+    },
+    "weight": 8,
+    "polarity": "positive"
+  },
+  "spring_cert": {
+    "id": "spring_cert",
+    "title": "資格取得",
+    "description": "時間を使って資格や検定に挑む。",
+    "year": null,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "spring_cert_A",
+        "label": "資格勉強に集中する",
+        "effects": {
+          "credits": 4,
+          "intellect": 2,
+          "time": -1
+        },
+        "polarity": "positive"
+      }
+    ],
+    "vacationType": "spring",
+    "weight": 10,
+    "polarity": "positive"
+  },
+  "spring_travel": {
+    "id": "spring_travel",
+    "title": "海外旅行",
+    "description": "まとまったお金で世界を見に行く。",
+    "year": null,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "spring_travel_A",
+        "label": "海外旅行に行く",
+        "effects": {
+          "money": -4,
+          "action_power": 2,
+          "connections": 1
+        },
+        "polarity": "positive"
+      }
+    ],
+    "vacationType": "spring",
+    "condition": {
+      "minStats": {
+        "money": 4
+      }
+    },
+    "weight": 7,
+    "polarity": "positive"
+  },
+  "spring_home": {
+    "id": "spring_home",
+    "title": "帰省・リフレッシュ",
+    "description": "一度戻って生活を整える。",
+    "year": null,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "spring_home_A",
+        "label": "帰省して休む",
+        "effects": {
+          "health": 3,
+          "money": 1
+        },
+        "polarity": "positive"
+      }
+    ],
+    "vacationType": "spring",
+    "weight": 10,
+    "polarity": "positive"
+  },
+  "spring_partner": {
+    "id": "spring_partner",
+    "title": "恋人と旅行",
+    "description": "二人で少し遠くへ出かける。",
+    "year": null,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "spring_partner_A",
+        "label": "恋人と旅行する",
+        "effects": {
+          "romance_exp": 3,
+          "health": 1,
+          "money": -2
+        },
+        "polarity": "positive"
+      }
+    ],
+    "vacationType": "spring",
+    "condition": {
+      "requiredFlags": {
+        "has_partner": true
+      }
+    },
+    "weight": 8,
+    "polarity": "positive"
+  },
+  "spring_work": {
+    "id": "spring_work",
+    "title": "バイト漬け",
+    "description": "まとまった時間で稼ぎに行く。",
+    "year": null,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "spring_work_A",
+        "label": "シフトを増やす",
+        "effects": {
+          "money": 5,
+          "work_tolerance": 2,
+          "health": -2
+        },
+        "polarity": "mixed"
+      }
+    ],
+    "vacationType": "spring",
+    "condition": {
+      "requiredAnyFlags": [
+        {
+          "job_type": "food_service"
+        },
+        {
+          "job_type": "tutor"
+        },
+        {
+          "job_type": "retail"
+        },
+        {
+          "job_type": "intern"
+        },
+        {
+          "job_type": "side_biz"
+        }
+      ]
+    },
+    "weight": 8,
+    "polarity": "mixed"
+  },
+  "spring_intern": {
+    "id": "spring_intern",
+    "title": "インターン参加",
+    "description": "社会に出る練習を早めに始める。",
+    "year": null,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "spring_intern_A",
+        "label": "短期インターンへ行く",
+        "effects": {
+          "work_tolerance": 3,
+          "connections": 1,
+          "time": -1
+        },
+        "flagEffects": {
+          "job_type": "intern"
+        },
+        "polarity": "positive"
+      }
+    ],
+    "vacationType": "spring",
+    "condition": {
+      "minRound": 13
+    },
+    "weight": 8,
+    "polarity": "positive"
+  },
+  "summer_fes": {
+    "id": "summer_fes",
+    "title": "海・フェス",
+    "description": "夏らしく遊び切る。",
+    "year": null,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "summer_fes_A",
+        "label": "海やフェスへ行く",
+        "effects": {
+          "health": 1,
+          "connections": 2,
+          "romance_exp": 1,
+          "money": -1
+        },
+        "polarity": "positive"
+      }
+    ],
+    "vacationType": "summer",
+    "weight": 10,
+    "polarity": "positive"
+  },
+  "summer_camp": {
+    "id": "summer_camp",
+    "title": "サークル合宿",
+    "description": "濃い時間を仲間と過ごす。",
+    "year": null,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "summer_camp_A",
+        "label": "合宿に参加する",
+        "effects": {
+          "connections": 3,
+          "action_power": 1,
+          "health": -1
+        },
+        "polarity": "positive"
+      }
+    ],
+    "vacationType": "summer",
+    "condition": {
+      "requiredAnyFlags": [
+        {
+          "club_type": "circle"
+        },
+        {
+          "club_type": "team"
+        },
+        {
+          "club_type": "community"
+        }
+      ]
+    },
+    "weight": 9,
+    "polarity": "positive"
+  },
+  "summer_intern": {
+    "id": "summer_intern",
+    "title": "サマーインターン",
+    "description": "夏を使って仕事を体験する。",
+    "year": null,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "summer_intern_A",
+        "label": "サマーインターンへ行く",
+        "effects": {
+          "work_tolerance": 3,
+          "connections": 1,
+          "health": -1
+        },
+        "flagEffects": {
+          "job_type": "intern"
+        },
+        "polarity": "positive"
+      }
+    ],
+    "vacationType": "summer",
+    "condition": {
+      "minRound": 13
+    },
+    "weight": 8,
+    "polarity": "positive"
+  },
+  "summer_obog": {
+    "id": "summer_obog",
+    "title": "OB/OG訪問",
+    "description": "卒業生の話から進路を具体化する。",
+    "year": null,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "summer_obog_A",
+        "label": "OB/OG訪問をする",
+        "effects": {
+          "connections": 2,
+          "work_tolerance": 2
+        },
+        "polarity": "positive"
+      }
+    ],
+    "vacationType": "summer",
+    "condition": {
+      "minRound": 25
+    },
+    "weight": 8,
+    "polarity": "positive"
+  }
+}
