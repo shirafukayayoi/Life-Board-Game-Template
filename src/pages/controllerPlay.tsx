@@ -20,6 +20,7 @@ import {
   type ServerMessage,
   type GameState,
   type GameEvent,
+  type EventChoice,
   type ChoiceResult,
   type PlayerResult,
   type Player,
@@ -66,6 +67,14 @@ const STAT_COLORS: Record<string, string> = {
   action_power: "#14b8a6",
   romance_exp: "#e11d48",
 };
+
+const SCORE_BREAKDOWN_LABELS = {
+  experience: "経験",
+  health: "体力",
+  money: "お金",
+  credits: "単位",
+  total: "合計",
+} as const;
 
 // ─── Styles ──────────────────────────────────────────────────────
 const S = {
@@ -126,6 +135,38 @@ const S = {
     color: "#6b7280",
     animation: pulse ? "pulse 2s ease-in-out infinite" : "none",
   }),
+  diceButton: (color: string) => ({
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 140,
+    height: 140,
+    borderRadius: 28,
+    border: "none",
+    background: `linear-gradient(135deg, ${color}, ${color}dd)`,
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: 700,
+    cursor: "pointer",
+    margin: "20px auto",
+    boxShadow: `0 8px 24px ${color}44`,
+    transition: "transform 0.15s, box-shadow 0.15s",
+    touchAction: "manipulation" as const,
+  }),
+  diceResult: {
+    textAlign: "center" as const,
+    padding: "24px 0",
+  },
+  diceNumber: {
+    fontSize: 64,
+    fontWeight: 800,
+    lineHeight: 1,
+  },
+  diceAdvanced: {
+    fontSize: 16,
+    color: "#6b7280",
+    marginTop: 8,
+  },
   eventTitle: {
     fontSize: 22,
     fontWeight: 700,
@@ -351,12 +392,17 @@ styleTag.textContent = `
     0% { opacity: 1; transform: translateY(0); }
     100% { opacity: 0; transform: translateY(-40px); }
   }
-
+  @keyframes diceShake {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    25% { transform: rotate(-8deg) scale(1.05); }
+    75% { transform: rotate(8deg) scale(1.05); }
+  }
 `;
 document.head.appendChild(styleTag);
 
 // ─── Helper: render stat effects as badges ──────────────────────
-export function EffectBadges({ effects }: { effects: StatEffects }) {
+export function EffectBadges({ effects }: { effects?: StatEffects }) {
+  if (!effects) return null;
   const allKeys = [...RESOURCE_KEYS, ...EXPERIENCE_KEYS] as string[];
   const labels: Record<string, string> = { ...RESOURCE_LABELS, ...EXPERIENCE_LABELS };
   const entries = allKeys
@@ -375,6 +421,38 @@ export function EffectBadges({ effects }: { effects: StatEffects }) {
           {e.value} {e.label}
         </span>
       ))}
+    </div>
+  );
+}
+
+export function ChoicePreview({ choice }: { choice: EventChoice }) {
+  if (!choice.preview) return <EffectBadges effects={choice.effects} />;
+  const riskLabel: Record<string, string> = {
+    low: "低",
+    medium: "中",
+    high: "高",
+    unknown: "不明",
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {choice.tone && <span style={S.effectBadge(true)}>{choice.tone}</span>}
+        {choice.preview.gain.map((item) => (
+          <span key={`gain-${item}`} style={S.effectBadge(true)}>
+            得られそう: {item}
+          </span>
+        ))}
+        {choice.preview.cost.map((item) => (
+          <span key={`cost-${item}`} style={S.effectBadge(false)}>
+            失いそう: {item}
+          </span>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: "#9ca3af" }}>
+        リスク: {riskLabel[choice.preview.risk]}
+        {choice.storyTags?.length ? ` / ${choice.storyTags.join("・")}` : ""}
+      </div>
     </div>
   );
 }
@@ -535,17 +613,22 @@ export function ControllerPlayPage() {
   const [lastChoiceResult, setLastChoiceResult] =
     useState<ChoiceResult | null>(null);
   const [gameResults, setGameResults] = useState<PlayerResult[] | null>(null);
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
 
   // UI state
   const [confirmChoice, setConfirmChoice] = useState<string | null>(null);
+  const [rolling, setRolling] = useState(false);
   const [showStatChanges, setShowStatChanges] = useState(false);
+  const [myDiceResult, setMyDiceResult] = useState<{ value: number; squares: number } | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const clientIdRef = useRef<string | null>(clientId);
   clientIdRef.current = clientId;
+  const stateRef = useRef<GameState>(state);
   const showStatChangesRef = useRef(showStatChanges);
   showStatChangesRef.current = showStatChanges;
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const removedByHostRef = useRef(false);
 
   const hostUrl = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -572,6 +655,11 @@ export function ControllerPlayPage() {
   const isMyTurn = useMemo(
     () => !!clientId && currentTurnPlayer?.id === clientId,
     [clientId, currentTurnPlayer]
+  );
+
+  const myLifeChoiceSubmitted = useMemo(
+    () => Boolean(clientId && state.pendingLifeChoices?.[clientId]),
+    [clientId, state.pendingLifeChoices]
   );
 
   const roundInfo = useMemo(
@@ -609,6 +697,7 @@ export function ControllerPlayPage() {
         name: name.trim(),
         role: "controller",
         clientId: sessionStorage.getItem("clg_controller_id") ?? undefined,
+        passkey: sessionStorage.getItem("clg_passkey") ?? undefined,
       };
       socket.send(JSON.stringify(payload));
     };
@@ -620,12 +709,38 @@ export function ControllerPlayPage() {
         case "welcome":
           setClientId(msg.clientId);
           sessionStorage.setItem("clg_controller_id", msg.clientId);
+          if (msg.passkey) {
+            sessionStorage.setItem("clg_passkey", msg.passkey);
+          }
           setConnected(true);
           setStatus("接続済み");
           break;
 
+        case "auth_error":
+          sessionStorage.removeItem("clg_controller_id");
+          setClientId(null);
+          setConnected(false);
+          setStatus(msg.message);
+          window.location.href = `/controller.html?host=${encodeURIComponent(hostUrl)}`;
+          break;
+
         case "state": {
+          const prev = stateRef.current;
           setState(msg.state);
+          stateRef.current = msg.state;
+
+          // Detect my dice roll result
+          if (
+            msg.state.lastRoll &&
+            msg.state.lastRoll.playerId === clientIdRef.current &&
+            (!prev.lastRoll || prev.lastRoll.playerId !== clientIdRef.current || prev.phase === "rolling")
+          ) {
+            setMyDiceResult({
+              value: msg.state.lastRoll.value,
+              squares: msg.state.lastRoll.squaresAdvanced,
+            });
+            setRolling(false);
+          }
 
           // Clear event if phase changed away from choosing
           if (
@@ -636,6 +751,10 @@ export function ControllerPlayPage() {
             setAvailableChoiceIds([]);
             setEventTargetPlayerId(null);
           }
+          // When it's a new turn (rolling phase, no lastRoll), clear dice result
+          if (msg.state.phase === "rolling" && !msg.state.lastRoll) {
+            setMyDiceResult(null);
+          }
           // Don't clear animation state if we're currently showing stat changes
           if (!showStatChangesRef.current) {
             setLastChoiceResult(null);
@@ -644,19 +763,41 @@ export function ControllerPlayPage() {
         }
 
         case "show_event": {
-          setCurrentEvent(msg.event);
-          setAvailableChoiceIds(msg.availableChoiceIds);
-          setEventTargetPlayerId(msg.playerId);
+          setRolling(false);
+          // If this event is for me and I just rolled, delay showing
+          // the event so the dice result is visible for 1.5 seconds
+          const isForMe = msg.playerId === clientIdRef.current;
+          const delay = isForMe ? 1500 : 0;
+          setTimeout(() => {
+            setMyDiceResult(null);
+            setCurrentEvent(msg.event);
+            setAvailableChoiceIds(msg.availableChoiceIds);
+            setEventTargetPlayerId(msg.playerId);
+          }, delay);
           break;
         }
 
-        case "choice_result":
+        case "show_life_event": {
+          setRolling(false);
+          setMyDiceResult(null);
+          setCurrentEvent(msg.event);
+          setAvailableChoiceIds(msg.availableChoiceIds);
+          setEventTargetPlayerId(clientIdRef.current);
+          break;
+        }
+
+        case "choice_result": {
+          const isLifeMap = stateRef.current.mode === "life_map";
+          const isMine = msg.result.playerId === clientIdRef.current;
+          if (isLifeMap && !isMine) break;
+
           setLastChoiceResult(msg.result);
           setCurrentEvent(null);
           setConfirmChoice(null);
           setShowStatChanges(true);
-          setTimeout(() => setShowStatChanges(false), 2000);
+          setTimeout(() => setShowStatChanges(false), isLifeMap ? 5000 : 2000);
           break;
+        }
 
         case "game_result":
           setGameResults(msg.results);
@@ -671,6 +812,15 @@ export function ControllerPlayPage() {
             window.location.href = msg.url;
           }
           break;
+
+        case "player_removed":
+          removedByHostRef.current = true;
+          sessionStorage.removeItem("clg_controller_id");
+          sessionStorage.removeItem("clg_name");
+          if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+          wsRef.current?.close();
+          window.location.href = `/controller.html?host=${encodeURIComponent(hostUrl)}`;
+          break;
       }
     };
 
@@ -683,6 +833,7 @@ export function ControllerPlayPage() {
       setStatus("切断されました");
       setConnected(false);
       wsRef.current = null;
+      if (removedByHostRef.current) return;
       // Auto reconnect after 3s
       reconnectTimer.current = setTimeout(connect, 3000);
     };
@@ -706,6 +857,11 @@ export function ControllerPlayPage() {
   );
 
   // ─── Actions ────────────────────────────────────────────────
+  const handleRoll = useCallback(() => {
+    setRolling(true);
+    sendMessage({ type: "player_roll" });
+  }, [sendMessage]);
+
   const handleChoiceConfirm = useCallback(() => {
     if (!confirmChoice) return;
     sendMessage({ type: "player_choice", choiceId: confirmChoice });
@@ -715,6 +871,8 @@ export function ControllerPlayPage() {
   // ─── Determine visual state ─────────────────────────────────
   type ViewState =
     | "waiting"
+    | "rolling"
+    | "dice_result"
     | "choosing"
     | "animating"
     | "result";
@@ -723,15 +881,19 @@ export function ControllerPlayPage() {
     if (gameResults || state.phase === "result") return "result";
     if (showStatChanges && lastChoiceResult) return "animating";
     if (currentEvent && eventTargetPlayerId === clientId) return "choosing";
+    if (myDiceResult && !currentEvent) return "dice_result";
+    if (isMyTurn && state.phase === "rolling") return "rolling";
     return "waiting";
   }, [
     state.phase,
+    isMyTurn,
     currentEvent,
     eventTargetPlayerId,
     clientId,
     lastChoiceResult,
     showStatChanges,
     gameResults,
+    myDiceResult,
   ]);
 
   // ─── Render helpers ─────────────────────────────────────────
@@ -741,14 +903,55 @@ export function ControllerPlayPage() {
       <div style={S.waitingMsg(true)}>
         {state.phase === "lobby"
           ? "ゲーム開始を待っています..."
-          : isMyTurn
-            ? "イベントを読み込み中..."
-            : `${currentTurnPlayer?.name ?? "..."}が選択中...`}
+          : state.mode === "life_map" && state.phase === "choosing"
+            ? myLifeChoiceSubmitted
+              ? "選択済み。ほかの人の選択を待っています..."
+              : "みんなが同時に選択中..."
+            : `${currentTurnPlayer?.name ?? "..."}のターン中...`}
       </div>
     </div>
   );
 
+  const renderRolling = () => (
+    <div style={S.card}>
+      <div style={{ textAlign: "center", padding: "16px 0" }}>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
+          あなたの月です!
+        </div>
+        <button
+          style={{
+            ...S.diceButton(accentColor),
+            ...(rolling
+              ? { animation: "diceShake 0.3s ease-in-out infinite" }
+              : {}),
+          }}
+          onClick={handleRoll}
+          disabled={rolling}
+        >
+          {rolling ? "..." : "今月のイベントを開く"}
+        </button>
+        <div style={{ fontSize: 14, color: "#9ca3af", marginTop: 8 }}>
+          タップして今月のイベントを開こう
+        </div>
+      </div>
+    </div>
+  );
 
+  const renderDiceResult = () => {
+    if (!myDiceResult) return null;
+    return (
+      <div style={S.card}>
+        <div style={S.diceResult}>
+          <div style={{ ...S.diceNumber, color: accentColor, fontSize: 36 }}>
+            OPEN
+          </div>
+          <div style={S.diceAdvanced}>
+            今月のイベントへ
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderChoosing = () => {
     if (!currentEvent) return null;
@@ -784,7 +987,7 @@ export function ControllerPlayPage() {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={S.choiceLabel}>{choice.label}</div>
-                <EffectBadges effects={choice.effects} />
+                <ChoicePreview choice={choice} />
                 {!isAvailable && choice.condition && (
                   <div style={S.conditionText}>
                     条件:{" "}
@@ -855,6 +1058,55 @@ export function ControllerPlayPage() {
     );
   };
 
+  const buildShareText = useCallback((result: PlayerResult) => {
+    const lines = [
+      "Campus Life Game",
+      `${result.playerName} の結果`,
+      result.academicStatus
+        ? `称号: ${result.storyAward?.title ?? result.lifeArchetype?.title ?? result.academicStatus.title}`
+        : `エンディング: ${result.ending?.title ?? "キャンパスライフ完走"}`,
+    ];
+
+    if (result.rank !== undefined) {
+      lines.push(`順位: ${result.rank}位`);
+    }
+    const score = result.score ?? result.scoreBreakdown?.total;
+    if (score !== undefined) {
+      lines.push(`スコア: ${score}`);
+    }
+    if (result.ending?.flavorText) {
+      lines.push(result.ending.flavorText);
+    }
+
+    return lines.join("\n");
+  }, []);
+
+  const handleShareResult = useCallback(
+    async (result: PlayerResult) => {
+      const text = buildShareText(result);
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: "Campus Life Game",
+            text,
+          });
+          setShareStatus("共有しました");
+          return;
+        }
+        await navigator.clipboard.writeText(text);
+        setShareStatus("結果をコピーしました");
+      } catch {
+        try {
+          await navigator.clipboard.writeText(text);
+          setShareStatus("結果をコピーしました");
+        } catch {
+          setShareStatus("共有できませんでした");
+        }
+      }
+    },
+    [buildShareText],
+  );
+
   const renderResult = () => {
     const results = gameResults;
     if (!results) return null;
@@ -868,13 +1120,28 @@ export function ControllerPlayPage() {
     }));
 
     return (
-      <div style={S.card}>
-        <div style={S.resultEmoji}>{myResult.ending.emoji}</div>
-        <div style={S.resultTitle}>{myResult.ending.title}</div>
-        <div style={S.resultDesc}>{myResult.ending.description}</div>
-        <div style={S.resultRank}>
-          {myResult.rank}位
+      <div style={S.card} className="controller-result-card">
+        <div style={S.resultEmoji}>
+          {myResult.academicStatus ? "\u{1F393}" : myResult.ending?.emoji ?? "\u{1F3C1}"}
         </div>
+        <div style={S.resultTitle}>
+          {myResult.academicStatus
+            ? myResult.storyAward?.title ?? myResult.lifeArchetype?.title ?? myResult.academicStatus.title
+            : myResult.ending?.title ?? "キャンパスライフ完走"}
+        </div>
+        <div style={S.resultDesc}>
+          {myResult.summary ?? myResult.ending?.description ?? "4年間の選択がここに刻まれました。"}
+        </div>
+        {myResult.ending?.flavorText && (
+          <div className="controller-result-flavor">
+            {myResult.ending.flavorText}
+          </div>
+        )}
+        {myResult.rank !== undefined && (
+          <div style={S.resultRank}>
+            {myResult.rank}位
+          </div>
+        )}
 
         <div
           style={{
@@ -884,7 +1151,9 @@ export function ControllerPlayPage() {
             marginBottom: 12,
           }}
         >
-          スコア: {myResult.score}
+          {myResult.academicStatus
+            ? `${myResult.lifeArchetype?.title} / 学業: ${myResult.academicStatus.title}`
+            : `スコア: ${myResult.score ?? myResult.scoreBreakdown?.total ?? "-"}`}
         </div>
 
         {/* Radar chart */}
@@ -918,6 +1187,33 @@ export function ControllerPlayPage() {
             </div>
           ))}
         </div>
+        {myResult.scoreBreakdown && (
+          <div className="controller-score-breakdown">
+            {Object.entries(myResult.scoreBreakdown).map(([key, value]) => (
+              <span key={key}>
+                {SCORE_BREAKDOWN_LABELS[key as keyof typeof SCORE_BREAKDOWN_LABELS]}: {value}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="share-card">
+          <div>
+            <div className="share-card__title">結果をシェア</div>
+            <div className="share-card__text">
+              名前、エンディング、順位、スコアを共有できます。
+            </div>
+            {shareStatus && (
+              <div className="share-card__status">{shareStatus}</div>
+            )}
+          </div>
+          <button
+            className="share-card__button"
+            type="button"
+            onClick={() => void handleShareResult(myResult)}
+          >
+            共有
+          </button>
+        </div>
       </div>
     );
   };
@@ -933,7 +1229,7 @@ export function ControllerPlayPage() {
         <div style={S.confirmDialog} onClick={(e) => e.stopPropagation()}>
           <div style={S.confirmTitle}>この選択でいい?</div>
           <div style={{ fontSize: 15, marginBottom: 16 }}>{choice.label}</div>
-          <EffectBadges effects={choice.effects} />
+          <ChoicePreview choice={choice} />
           <div style={{ ...S.confirmBtns, marginTop: 20 }}>
             <button
               style={S.confirmBtn(false)}
@@ -966,6 +1262,8 @@ export function ControllerPlayPage() {
       {/* Main content area */}
       <div style={S.section}>
         {viewState === "waiting" && renderWaiting()}
+        {viewState === "rolling" && renderRolling()}
+        {viewState === "dice_result" && renderDiceResult()}
         {viewState === "choosing" && renderChoosing()}
         {viewState === "animating" && renderAnimating()}
         {viewState === "result" && renderResult()}

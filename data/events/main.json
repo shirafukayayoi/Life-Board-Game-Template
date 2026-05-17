@@ -1,453 +1,313 @@
 {
   "1": {
     "id": "1",
-    "title": "初めての授業",
-    "description": "大学初日。大きな講義室に座る。隣の人が話しかけてきた。",
-    "category": "学業",
+    "title": "入学・新生活スタート",
+    "description": "住まいと履修を決める最初の月。大学生活の土台を選ぶ。",
+    "year": 1,
+    "category": "学業+生活",
     "choices": [
       {
         "id": "1A",
-        "label": "真面目にノートを取る",
+        "label": "実家から通って履修を固める",
         "effects": {
-          "credits": 3,
-          "intellect": 1
-        }
+          "credits": 5,
+          "intellect": 1,
+          "health": 1
+        },
+        "flagEffects": {
+          "living_alone": false
+        },
+        "polarity": "positive"
       },
       {
         "id": "1B",
-        "label": "隣の人と仲良くなる",
+        "label": "一人暮らしを始める",
         "effects": {
-          "credits": 1,
-          "connections": 2
-        }
+          "credits": 4,
+          "money": -2,
+          "action_power": 2
+        },
+        "flagEffects": {
+          "living_alone": true
+        },
+        "polarity": "mixed"
       },
       {
         "id": "1C",
-        "label": "寝る（昨夜ゲームしすぎた）",
+        "label": "寮やシェアハウスで様子を見る",
         "effects": {
-          "time": 1,
-          "health": -1
-        }
+          "credits": 4,
+          "connections": 2,
+          "money": -1
+        },
+        "flagEffects": {
+          "living_alone": false
+        },
+        "polarity": "positive"
+      }
+    ],
+    "conditionalVariants": [
+      {
+        "condition": {
+          "faculty": "education"
+        },
+        "description": "教育学部のオリエンテーションでは、教職課程の重さも最初に見える。",
+        "choices": [
+          {
+            "id": "1ED-A",
+            "label": "教職課程まで含めて履修を組む",
+            "effects": {
+              "credits": 6,
+              "intellect": 1,
+              "time": -1
+            },
+            "flagEffects": {
+              "teaching_cert": true
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "1ED-B",
+            "label": "まず一般科目で土台を作る",
+            "effects": {
+              "credits": 5,
+              "health": 1
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "1ED-C",
+            "label": "先輩に相談して生活を整える",
+            "effects": {
+              "credits": 4,
+              "connections": 2
+            },
+            "polarity": "positive"
+          }
+        ]
+      },
+      {
+        "condition": {
+          "faculty": "medical"
+        },
+        "description": "医療・福祉系は初月から実習と必修の存在感が強い。",
+        "choices": [
+          {
+            "id": "1MD-A",
+            "label": "必修と実習説明に全力で食らいつく",
+            "effects": {
+              "credits": 6,
+              "intellect": 2,
+              "health": -1
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "1MD-B",
+            "label": "同期と情報共有の輪を作る",
+            "effects": {
+              "credits": 5,
+              "connections": 2
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "1MD-C",
+            "label": "生活リズムを優先する",
+            "effects": {
+              "credits": 4,
+              "health": 2
+            },
+            "polarity": "positive"
+          }
+        ]
       }
     ]
   },
   "2": {
     "id": "2",
-    "title": "一人暮らし or 実家暮らし",
-    "description": "春、住む場所を決める時が来た。",
-    "category": "生活",
+    "title": "新歓と居場所選び",
+    "description": "サークル、部活、地域活動。どこに顔を出すかで人間関係が変わる。",
+    "year": 1,
+    "category": "課外+人間関係",
     "choices": [
       {
         "id": "2A",
-        "label": "一人暮らしを始める",
+        "label": "大きなサークルに入る",
         "effects": {
-          "time": -1,
-          "money": -2,
-          "work_tolerance": 1,
-          "action_power": 2
+          "connections": 3,
+          "time": -1
         },
         "flagEffects": {
-          "living_alone": true
-        }
+          "club_type": "circle"
+        },
+        "polarity": "positive"
       },
       {
         "id": "2B",
-        "label": "実家から通う",
+        "label": "体育会や制作チームに入る",
         "effects": {
-          "time": 1,
-          "money": 1,
-          "health": 1,
-          "action_power": -1
-        }
+          "action_power": 2,
+          "work_tolerance": 1,
+          "time": -1
+        },
+        "flagEffects": {
+          "club_type": "team"
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "2C",
+        "label": "学外コミュニティを探す",
+        "effects": {
+          "connections": 1,
+          "action_power": 2
+        },
+        "flagEffects": {
+          "club_type": "community"
+        },
+        "polarity": "positive"
       }
     ]
   },
   "3": {
     "id": "3",
-    "title": "履修登録",
-    "description": "時間割を組む。友達に合わせるか、自分の興味で攻めるか。",
-    "category": "学業",
-    "choices": [
-      {
-        "id": "3A",
-        "label": "友達と同じ授業を取る",
-        "effects": {
-          "credits": 2,
-          "connections": 2
-        }
-      },
-      {
-        "id": "3B",
-        "label": "興味のある授業を攻める",
-        "effects": {
-          "time": -1,
-          "credits": 3,
-          "intellect": 2
-        }
-      },
-      {
-        "id": "3C",
-        "label": "全休を作る",
-        "effects": {
-          "time": 2,
-          "credits": 1,
-          "health": 1,
-          "intellect": -1
-        }
-      },
-      {
-        "id": "3D",
-        "label": "教職課程を取る",
-        "effects": {
-          "time": -2,
-          "credits": 4,
-          "health": -1,
-          "intellect": 2
-        },
-        "flagEffects": {
-          "teaching_cert": true
-        }
-      }
-    ]
-  },
-  "4": {
-    "id": "4",
-    "title": "サークル・部活・ノンサー・地域活動",
-    "description": "新歓の季節。ビラの山。どう過ごす？",
-    "category": "課外活動",
-    "choices": [
-      {
-        "id": "4A",
-        "label": "サークルに入る",
-        "effects": {
-          "time": -1,
-          "money": -1,
-          "connections": 2,
-          "action_power": 1,
-          "romance_exp": 1
-        },
-        "flagEffects": {
-          "club_type": "circle"
-        }
-      },
-      {
-        "id": "4B",
-        "label": "部活に入る（ガチ）",
-        "effects": {
-          "time": -3,
-          "money": -1,
-          "health": 2,
-          "connections": 2,
-          "work_tolerance": 1,
-          "action_power": 1
-        },
-        "flagEffects": {
-          "club_type": "team"
-        }
-      },
-      {
-        "id": "4C",
-        "label": "ノンサーで自由に",
-        "effects": {
-          "time": 2,
-          "connections": -1
-        },
-        "flagEffects": {
-          "club_type": "none"
-        }
-      },
-      {
-        "id": "4D",
-        "label": "地域活動を始める",
-        "effects": {
-          "time": -1,
-          "connections": 2,
-          "action_power": 2
-        },
-        "flagEffects": {
-          "club_type": "community"
-        }
-      }
-    ]
-  },
-  "5": {
-    "id": "5",
-    "title": "友達ができる",
-    "description": "少しずつ大学に慣れてきた。どんな付き合い方をする？",
-    "category": "人間関係",
-    "choices": [
-      {
-        "id": "5A",
-        "label": "浅く広く — 顔が広い人になる",
-        "effects": {
-          "time": -1,
-          "money": -1,
-          "connections": 3,
-          "romance_exp": 1
-        }
-      },
-      {
-        "id": "5B",
-        "label": "少数精鋭 — 深い関係を築く",
-        "effects": {
-          "health": 1,
-          "connections": 1,
-          "romance_exp": 1
-        }
-      },
-      {
-        "id": "5C",
-        "label": "一匹狼 — 自分の時間を大事にする",
-        "effects": {
-          "time": 1,
-          "intellect": 1,
-          "connections": -1,
-          "action_power": 1
-        }
-      }
-    ]
-  },
-  "6": {
-    "id": "6",
-    "title": "1限がキツくなる",
-    "description": "朝が来るのが早すぎる。布団が離してくれない。",
-    "category": "学業",
-    "choices": [
-      {
-        "id": "6A",
-        "label": "気合いで起きる",
-        "effects": {
-          "time": -1,
-          "credits": 2,
-          "health": -1,
-          "intellect": 1,
-          "work_tolerance": 1
-        }
-      },
-      {
-        "id": "6B",
-        "label": "友達にモーニングコールを頼む",
-        "effects": {
-          "credits": 1,
-          "connections": 1
-        }
-      },
-      {
-        "id": "6C",
-        "label": "1限を切り始める",
-        "effects": {
-          "time": 1,
-          "credits": -2,
-          "health": 1
-        }
-      }
-    ]
-  },
-  "7": {
-    "id": "7",
-    "title": "バイトを探す",
-    "description": "金がない。働かなければ。でもどこで？",
+    "title": "初めてのアルバイト探し",
+    "description": "お金、時間、経験。どれを優先して働くかを決める。",
+    "year": 1,
     "category": "仕事",
     "choices": [
       {
-        "id": "7A",
-        "label": "飲食バイト",
+        "id": "3A",
+        "label": "飲食バイトを始める",
         "effects": {
-          "time": -2,
           "money": 3,
-          "health": -1,
-          "connections": 1,
-          "work_tolerance": 2
+          "work_tolerance": 2,
+          "time": -1
         },
         "flagEffects": {
           "job_type": "food_service"
-        }
+        },
+        "polarity": "positive"
       },
       {
-        "id": "7B",
-        "label": "塾講師",
+        "id": "3B",
+        "label": "家庭教師に挑戦する",
         "effects": {
-          "time": -2,
-          "money": 3,
+          "money": 2,
           "intellect": 1,
           "work_tolerance": 1
         },
         "flagEffects": {
           "job_type": "tutor"
-        }
-      },
-      {
-        "id": "7C",
-        "label": "小売・接客業",
-        "effects": {
-          "time": -2,
-          "money": 2,
-          "health": -1,
-          "connections": 1,
-          "work_tolerance": 2
         },
-        "flagEffects": {
-          "job_type": "retail"
-        }
+        "polarity": "positive"
       },
       {
-        "id": "7D",
-        "label": "長期インターン",
+        "id": "3C",
+        "label": "今は働かず生活を整える",
         "effects": {
-          "time": -3,
-          "money": 2,
-          "health": -1,
-          "intellect": 1,
-          "connections": 2,
-          "work_tolerance": 2,
+          "health": 2,
           "action_power": 1
         },
-        "flagEffects": {
-          "job_type": "intern"
-        }
+        "polarity": "positive"
+      }
+    ]
+  },
+  "4": {
+    "id": "4",
+    "title": "前期試験 1年",
+    "description": "大学最初の試験。講義の受け方が結果に出る。",
+    "year": 1,
+    "category": "学業",
+    "choices": [
+      {
+        "id": "4A",
+        "label": "計画的に勉強して高得点を狙う",
+        "effects": {
+          "credits": 10,
+          "intellect": 3,
+          "time": -1
+        },
+        "polarity": "positive"
       },
       {
-        "id": "7E",
-        "label": "副業系（アフィ・動画等）",
+        "id": "4B",
+        "label": "友人と過去問を共有する",
         "effects": {
-          "time": -1,
-          "money": 1,
+          "credits": 8,
+          "connections": 2,
+          "intellect": 2
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "4C",
+        "label": "一夜漬けで突破する",
+        "effects": {
+          "credits": 5,
+          "health": -2,
+          "intellect": 1
+        },
+        "polarity": "negative"
+      }
+    ]
+  },
+  "5": {
+    "id": "5",
+    "title": "夏休み自由行動",
+    "description": "長い休みの使い方を選ぶ。",
+    "year": 1,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "5A",
+        "label": "夏休みプールから選ぶ",
+        "effects": {},
+        "polarity": "mixed"
+      }
+    ],
+    "pool": "vacation",
+    "vacationType": "summer"
+  },
+  "6": {
+    "id": "6",
+    "title": "後期スタート・生活見直し",
+    "description": "前期を終えて、通学や生活のリズムを見直す。",
+    "year": 1,
+    "category": "学業+生活",
+    "choices": [
+      {
+        "id": "6A",
+        "label": "実家のまま後期の履修を厚くする",
+        "effects": {
+          "credits": 5,
           "intellect": 1,
+          "health": 1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "6B",
+        "label": "一人暮らしに移行する",
+        "effects": {
+          "credits": 4,
+          "money": -2,
           "action_power": 2
         },
         "flagEffects": {
-          "job_type": "side_biz"
-        }
-      }
-    ]
-  },
-  "8": {
-    "id": "8",
-    "title": "金欠になる",
-    "description": "月末。財布が薄い。口座も薄い。",
-    "category": "生活",
-    "choices": [
-      {
-        "id": "8A",
-        "label": "シフトを増やして耐える",
-        "effects": {
-          "time": -2,
-          "money": 3,
-          "health": -1,
-          "work_tolerance": 1
-        }
+          "living_alone": true
+        },
+        "polarity": "mixed"
       },
       {
-        "id": "8B",
-        "label": "親に泣きつく",
+        "id": "6C",
+        "label": "友人の近くで生活リズムを組み直す",
         "effects": {
-          "money": 2,
-          "action_power": -1
-        }
-      },
-      {
-        "id": "8C",
-        "label": "食費を削る（もやし生活）",
-        "effects": {
-          "money": 1,
-          "health": -2,
-          "work_tolerance": 1
-        }
-      }
-    ]
-  },
-  "9": {
-    "id": "9",
-    "title": "分岐点：課外活動の道",
-    "description": "これまでの活動が道を分ける。どちらの道を進む？",
-    "category": "分岐",
-    "choices": [
-      {
-        "id": "9-A",
-        "label": "団体活動ルート（サークル・部活寄りの道）",
-        "description": "仲間と一緒に活動を深める",
-        "effects": {},
-        "branchRoute": "9A-1"
-      },
-      {
-        "id": "9-B",
-        "label": "ソロ活動ルート（自分の時間を大事にする道）",
-        "description": "一人の時間や地域活動を活かす",
-        "effects": {},
-        "branchRoute": "9B-1"
-      }
-    ]
-  },
-  "10": {
-    "id": "10",
-    "title": "飲み会に行きすぎる",
-    "description": "誘われるがまま飲みに行く日々。気づいたら週3。",
-    "category": "人間関係",
-    "choices": [
-      {
-        "id": "10A",
-        "label": "楽しいから全部行く",
-        "effects": {
-          "time": -2,
-          "money": -3,
-          "health": -2,
-          "connections": 3,
-          "romance_exp": 1
-        }
-      },
-      {
-        "id": "10B",
-        "label": "週1に絞る",
-        "effects": {
-          "time": -1,
-          "money": -1,
-          "connections": 1
-        }
-      },
-      {
-        "id": "10C",
-        "label": "飲み会は断る派になる",
-        "effects": {
-          "time": 1,
-          "money": 1,
-          "health": 1,
-          "connections": -1
-        }
-      }
-    ]
-  },
-  "11": {
-    "id": "11",
-    "title": "終電を逃す",
-    "description": "気づいたら最終電車が行ってしまった。",
-    "category": "生活",
-    "choices": [
-      {
-        "id": "11A",
-        "label": "タクシーで帰る",
-        "effects": {
-          "money": -2
-        }
-      },
-      {
-        "id": "11B",
-        "label": "カラオケでオール",
-        "effects": {
-          "time": -1,
-          "money": -1,
-          "health": -2,
-          "connections": 2,
-          "romance_exp": 1
-        }
-      },
-      {
-        "id": "11C",
-        "label": "ネカフェで夜を明かす",
-        "effects": {
-          "money": -1,
-          "health": -1,
-          "work_tolerance": 1
-        }
+          "credits": 4,
+          "connections": 2
+        },
+        "polarity": "positive"
       }
     ],
     "conditionalVariants": [
@@ -457,1686 +317,1996 @@
             "living_alone": true
           }
         },
-        "description": "一人暮らしだから大学の近くに住んでいる。歩いて帰れる。",
+        "description": "すでに一人暮らしを始めている。ここからは生活の質を調整する月。",
         "choices": [
           {
-            "id": "11A",
-            "label": "タクシーで帰る",
+            "id": "6LA-A",
+            "label": "自炊と履修のルーティンを作る",
             "effects": {
-              "money": -2
-            }
-          },
-          {
-            "id": "11B",
-            "label": "カラオケでオール",
-            "effects": {
-              "time": -1,
-              "money": -1,
-              "health": -2,
-              "connections": 2,
-              "romance_exp": 1
-            }
-          },
-          {
-            "id": "11C",
-            "label": "ネカフェで夜を明かす",
-            "effects": {
-              "money": -1,
-              "health": -1,
-              "work_tolerance": 1
-            }
-          },
-          {
-            "id": "11D",
-            "label": "歩いて帰れる",
-            "effects": {
+              "credits": 5,
+              "health": 1,
               "action_power": 1
-            }
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "6LA-B",
+            "label": "友人を呼んで拠点化する",
+            "effects": {
+              "credits": 4,
+              "connections": 2,
+              "money": -1
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "6LA-C",
+            "label": "家計を見直す",
+            "effects": {
+              "credits": 4,
+              "money": 1,
+              "work_tolerance": 1
+            },
+            "polarity": "positive"
           }
         ]
       }
     ]
   },
-  "12": {
-    "id": "12",
-    "title": "落単寸前",
-    "description": "テスト前日。ノートがない。何もわからない。",
+  "7": {
+    "id": "7",
+    "title": "学園祭 1年",
+    "description": "初めての学園祭。参加する側から作る側へ少し近づく。",
+    "year": 1,
+    "category": "課外",
+    "choices": [
+      {
+        "id": "7A",
+        "label": "企画側として動く",
+        "effects": {
+          "connections": 2,
+          "action_power": 2,
+          "health": -1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "7B",
+        "label": "友人と見て回る",
+        "effects": {
+          "connections": 2,
+          "romance_exp": 1,
+          "health": 1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "7C",
+        "label": "課題を優先して距離を置く",
+        "effects": {
+          "credits": 3,
+          "intellect": 1
+        },
+        "polarity": "positive"
+      }
+    ]
+  },
+  "8": {
+    "id": "8",
+    "title": "初めてのレポート発表",
+    "description": "自分の考えを人前で説明する。",
+    "year": 1,
     "category": "学業",
     "choices": [
       {
-        "id": "12A",
-        "label": "徹夜で勉強する",
+        "id": "8A",
+        "label": "講義と課題に集中する",
         "effects": {
-          "time": -1,
+          "credits": 6,
+          "intellect": 2,
+          "time": -1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "8B",
+        "label": "友人と分担して乗り切る",
+        "effects": {
+          "credits": 4,
+          "connections": 2,
+          "intellect": 1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "8C",
+        "label": "最低限で済ませて余白を作る",
+        "effects": {
           "credits": 2,
-          "health": -2,
-          "intellect": 1,
-          "work_tolerance": 1
-        }
+          "health": 1,
+          "action_power": 1
+        },
+        "polarity": "mixed"
+      }
+    ]
+  },
+  "9": {
+    "id": "9",
+    "title": "冬の誘いと距離感",
+    "description": "忘年会、クリスマス、気になる相手。近づくにも引くにも選択がいる。",
+    "year": 1,
+    "category": "恋愛",
+    "choices": [
+      {
+        "id": "9A",
+        "label": "気になる相手を誘う",
+        "effects": {},
+        "dynamicRandomChance": {
+          "formula": "romance_success",
+          "onSuccess": {
+            "romance_exp": 3,
+            "connections": 1
+          },
+          "onFailure": {
+            "romance_exp": 1,
+            "health": -1
+          }
+        },
+        "tone": "romance",
+        "storyTags": [
+          "恋愛"
+        ],
+        "polarity": "mixed"
       },
       {
-        "id": "12B",
-        "label": "友達にノートを借りる",
+        "id": "9B",
+        "label": "友人グループで過ごす",
         "effects": {
-          "credits": 1,
-          "connections": 1
-        }
-      },
-      {
-        "id": "12C",
-        "label": "諦めて寝る",
-        "effects": {
-          "time": 1,
-          "credits": -2,
+          "connections": 2,
           "health": 1
-        }
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "9C",
+        "label": "バイトで年末資金を作る",
+        "effects": {
+          "money": 3,
+          "work_tolerance": 1,
+          "time": -1
+        },
+        "polarity": "positive"
+      }
+    ]
+  },
+  "10": {
+    "id": "10",
+    "title": "後期試験 1年",
+    "description": "1年後期の総まとめ。",
+    "year": 1,
+    "category": "学業",
+    "choices": [
+      {
+        "id": "10A",
+        "label": "計画的に勉強して高得点を狙う",
+        "effects": {
+          "credits": 10,
+          "intellect": 3,
+          "time": -1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "10B",
+        "label": "友人と過去問を共有する",
+        "effects": {
+          "credits": 8,
+          "connections": 2,
+          "intellect": 2
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "10C",
+        "label": "一夜漬けで突破する",
+        "effects": {
+          "credits": 5,
+          "health": -2,
+          "intellect": 1
+        },
+        "polarity": "negative"
+      }
+    ]
+  },
+  "11": {
+    "id": "11",
+    "title": "春休み自由行動",
+    "description": "2月の空き時間をどう使うか。",
+    "year": 1,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "11A",
+        "label": "春休みプールから選ぶ",
+        "effects": {},
+        "polarity": "mixed"
+      }
+    ],
+    "pool": "vacation",
+    "vacationType": "spring"
+  },
+  "12": {
+    "id": "12",
+    "title": "春休み自由行動",
+    "description": "進級前の最後の調整。",
+    "year": 1,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "12A",
+        "label": "春休みプールから選ぶ",
+        "effects": {},
+        "polarity": "mixed"
+      }
+    ],
+    "pool": "vacation",
+    "vacationType": "spring"
+  },
+  "13": {
+    "id": "13",
+    "title": "2年履修と役割選び",
+    "description": "少し慣れた2年目。役職や専攻の色が見え始める。",
+    "year": 2,
+    "category": "学業+課外",
+    "choices": [
+      {
+        "id": "13A",
+        "label": "履修を厚くして専門に寄せる",
+        "effects": {
+          "credits": 6,
+          "intellect": 2
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "13B",
+        "label": "サークルや部活の役割を引き受ける",
+        "effects": {
+          "credits": 4,
+          "connections": 2,
+          "action_power": 1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "13C",
+        "label": "最後のチャンスで一人暮らしに移る",
+        "effects": {
+          "credits": 4,
+          "money": -2,
+          "action_power": 2
+        },
+        "flagEffects": {
+          "living_alone": true
+        },
+        "polarity": "mixed"
       }
     ],
     "conditionalVariants": [
       {
         "condition": {
-          "minStats": {
-            "connections": 5
+          "requiredFlags": {
+            "living_alone": true
           }
         },
-        "description": "人脈が広いおかげで、ノートを簡単に集められた。",
+        "description": "住まいは固まった。2年目は専門と役割の選び方が軸になる。",
         "choices": [
           {
-            "id": "12A",
-            "label": "徹夜で勉強する",
+            "id": "13LA-A",
+            "label": "専門科目を厚く取る",
             "effects": {
-              "time": -1,
-              "credits": 2,
-              "health": -2,
-              "intellect": 1,
-              "work_tolerance": 1
-            }
+              "credits": 6,
+              "intellect": 2
+            },
+            "polarity": "positive"
           },
           {
-            "id": "12B",
-            "label": "友達にノートを借りる",
+            "id": "13LA-B",
+            "label": "自宅を仲間の作業場にする",
             "effects": {
-              "credits": 2,
-              "connections": 1
-            }
+              "credits": 4,
+              "connections": 2,
+              "action_power": 1
+            },
+            "polarity": "positive"
           },
           {
-            "id": "12C",
-            "label": "諦めて寝る",
+            "id": "13LA-C",
+            "label": "生活費のためバイトを増やす",
             "effects": {
-              "time": 1,
-              "credits": -2,
-              "health": 1
-            }
+              "credits": 4,
+              "money": 2,
+              "work_tolerance": 1,
+              "time": -1
+            },
+            "polarity": "positive"
           }
         ]
-      }
-    ]
-  },
-  "13": {
-    "id": "13",
-    "title": "学園祭・オーキャン運営",
-    "description": "大学祭の準備が始まる。やる？",
-    "category": "課外活動",
-    "choices": [
-      {
-        "id": "13A",
-        "label": "実行委員をやる",
-        "effects": {
-          "time": -3,
-          "money": -1,
-          "health": -1,
-          "connections": 3,
-          "work_tolerance": 1,
-          "action_power": 2
-        }
-      },
-      {
-        "id": "13B",
-        "label": "サークルで出店する",
-        "effects": {
-          "time": -2,
-          "money": -1,
-          "connections": 2,
-          "action_power": 1,
-          "romance_exp": 1
-        }
-      },
-      {
-        "id": "13C",
-        "label": "客として楽しむ",
-        "effects": {
-          "money": -1,
-          "romance_exp": 1
-        }
-      },
-      {
-        "id": "13D",
-        "label": "オーキャンスタッフをやる",
-        "effects": {
-          "time": -2,
-          "connections": 2,
-          "work_tolerance": 1,
-          "action_power": 1
-        }
       }
     ]
   },
   "14": {
     "id": "14",
-    "title": "恋の入り口",
-    "description": "気になる人ができた…かもしれない。",
-    "category": "恋愛",
+    "title": "春の交流と新しい関係",
+    "description": "後輩や他学部との接点が増える。",
+    "year": 2,
+    "category": "人間関係",
     "choices": [
       {
         "id": "14A",
-        "label": "サークル内で距離を縮める",
-        "effects": {
-          "time": -1,
-          "money": -1,
-          "connections": 1,
-          "romance_exp": 2
-        },
-        "randomChance": 0.5,
-        "randomBonusEffects": {},
-        "randomPenaltyEffects": {},
-        "condition": {
-          "minStats": {
-            "romance_exp": 2
+        "label": "気になる人と二人で出かける",
+        "effects": {},
+        "dynamicRandomChance": {
+          "formula": "romance_success",
+          "onSuccess": {
+            "romance_exp": 3,
+            "connections": 1,
+            "health": 1
+          },
+          "onFailure": {
+            "romance_exp": 1,
+            "health": -1
           }
         },
-        "flagEffects": {
-          "has_partner": true
-        }
+        "tone": "romance",
+        "storyTags": [
+          "恋愛"
+        ],
+        "polarity": "mixed"
       },
       {
         "id": "14B",
-        "label": "バイト先の人を誘ってみる",
+        "label": "新歓を支える側に回る",
         "effects": {
-          "time": -1,
-          "money": -2,
+          "connections": 3,
           "action_power": 1,
-          "romance_exp": 2
+          "time": -1
         },
-        "randomChance": 0.5,
-        "randomBonusEffects": {},
-        "randomPenaltyEffects": {},
-        "condition": {
-          "minStats": {
-            "romance_exp": 2
-          }
-        },
-        "flagEffects": {
-          "has_partner": true
-        }
+        "polarity": "positive"
       },
       {
         "id": "14C",
-        "label": "合コンに行く",
+        "label": "専門の勉強会に参加する",
         "effects": {
-          "time": -1,
-          "money": -2,
-          "connections": 1,
-          "romance_exp": 2
+          "credits": 3,
+          "intellect": 2
         },
-        "randomChance": 0.5,
-        "randomBonusEffects": {},
-        "randomPenaltyEffects": {},
-        "condition": {
-          "minStats": {
-            "romance_exp": 2
-          }
-        },
-        "flagEffects": {
-          "has_partner": true
-        }
-      },
-      {
-        "id": "14D",
-        "label": "マッチングアプリを始める",
-        "effects": {
-          "money": -1,
-          "action_power": 1,
-          "romance_exp": 1
-        },
-        "randomChance": 0.5,
-        "randomBonusEffects": {},
-        "randomPenaltyEffects": {},
-        "condition": {
-          "minStats": {
-            "romance_exp": 2
-          }
-        },
-        "flagEffects": {
-          "has_partner": true
-        }
-      },
-      {
-        "id": "14E",
-        "label": "恋愛は今はいい",
-        "effects": {
-          "time": 1,
-          "credits": 1
-        }
+        "polarity": "positive"
       }
     ]
   },
   "15": {
     "id": "15",
-    "title": "資格を取る",
-    "description": "何か形に残るものが欲しい。",
-    "category": "学業",
+    "title": "個人ランダム枠",
+    "description": "人によって違う出来事が起きる月。",
+    "year": 2,
+    "category": "個人ランダム",
     "choices": [
       {
         "id": "15A",
-        "label": "TOEIC",
-        "effects": {
-          "time": -2,
-          "money": -1,
-          "intellect": 2
-        }
-      },
-      {
-        "id": "15B",
-        "label": "簿記",
-        "effects": {
-          "time": -2,
-          "money": -1,
-          "intellect": 2,
-          "work_tolerance": 1
-        }
-      },
-      {
-        "id": "15C",
-        "label": "ITパスポート",
-        "effects": {
-          "time": -1,
-          "money": -1,
-          "intellect": 2
-        }
-      },
-      {
-        "id": "15D",
-        "label": "宅建",
-        "effects": {
-          "time": -3,
-          "money": -2,
-          "health": -1,
-          "intellect": 3
-        }
-      },
-      {
-        "id": "15E",
-        "label": "秘書検定",
-        "effects": {
-          "time": -1,
-          "money": -1,
-          "intellect": 1,
-          "connections": 1,
-          "work_tolerance": 1
-        }
-      },
-      {
-        "id": "15F",
-        "label": "今は取らない",
-        "effects": {
-          "time": 1
-        }
+        "label": "ランダムイベントを受ける",
+        "effects": {},
+        "polarity": "mixed"
       }
-    ]
+    ],
+    "pool": "random"
   },
   "16": {
     "id": "16",
-    "title": "車の免許",
-    "description": "免許、取る？",
-    "category": "生活",
+    "title": "前期試験 2年",
+    "description": "専門科目の重さが増す試験。",
+    "year": 2,
+    "category": "学業",
     "choices": [
       {
         "id": "16A",
-        "label": "合宿で一気に取る",
+        "label": "計画的に勉強して高得点を狙う",
         "effects": {
-          "time": -2,
-          "money": -5,
-          "health": -1,
-          "connections": 1,
-          "action_power": 2
+          "credits": 11,
+          "intellect": 3,
+          "time": -1
         },
-        "flagEffects": {
-          "has_license": true
-        },
-        "condition": {
-          "minStats": {
-            "money": 4
-          }
-        }
+        "polarity": "positive"
       },
       {
         "id": "16B",
-        "label": "通いでゆっくり取る",
+        "label": "友人と過去問を共有する",
         "effects": {
-          "time": -3,
-          "money": -4,
-          "action_power": 1
+          "credits": 9,
+          "connections": 2,
+          "intellect": 2
         },
-        "flagEffects": {
-          "has_license": true
-        },
-        "condition": {
-          "minStats": {
-            "money": 4
-          }
-        }
+        "polarity": "positive"
       },
       {
         "id": "16C",
-        "label": "取らない",
-        "effects": {}
+        "label": "一夜漬けで突破する",
+        "effects": {
+          "credits": 6,
+          "health": -2,
+          "intellect": 1
+        },
+        "polarity": "negative"
+      }
+    ],
+    "conditionalVariants": [
+      {
+        "condition": {
+          "faculty": "medical"
+        },
+        "description": "医療・福祉系の実習前試験は、生活リズムも削ってくる。",
+        "choices": [
+          {
+            "id": "16MD-A",
+            "label": "実習前試験を最優先する",
+            "effects": {
+              "credits": 12,
+              "intellect": 3,
+              "health": -2
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "16MD-B",
+            "label": "同期と技術練習を回す",
+            "effects": {
+              "credits": 10,
+              "connections": 2,
+              "intellect": 2
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "16MD-C",
+            "label": "落とさない範囲で休む",
+            "effects": {
+              "credits": 8,
+              "health": 2
+            },
+            "polarity": "positive"
+          }
+        ]
       }
     ]
   },
   "17": {
     "id": "17",
-    "title": "分岐点：将来への投資",
-    "description": "3年目。将来が気になり始めた。どの道に進む？",
-    "category": "分岐",
+    "title": "夏休み自由行動",
+    "description": "2年目の夏。選択肢は少し広がる。",
+    "year": 2,
+    "category": "自由プール",
     "choices": [
       {
-        "id": "17-A",
-        "label": "留学ルート（海外で学ぶ）",
-        "description": "知性と行動力が大きく伸びる。お金と時間は覚悟",
+        "id": "17A",
+        "label": "夏休みプールから選ぶ",
         "effects": {},
-        "condition": {
-          "minStats": {
-            "intellect": 4
-          }
-        },
-        "branchRoute": "17A-1"
-      },
-      {
-        "id": "17-B",
-        "label": "キャリアルート（インターン・就活準備）",
-        "description": "労働耐性と人脈を積む実践の道",
-        "effects": {},
-        "condition": {
-          "minStats": {
-            "work_tolerance": 3
-          }
-        },
-        "branchRoute": "17B-1"
-      },
-      {
-        "id": "17-C",
-        "label": "探索ルート（自分探し・挑戦）",
-        "description": "何かを変えたい。自由に動く",
-        "effects": {},
-        "branchRoute": "17C-1"
+        "polarity": "mixed"
       }
-    ]
+    ],
+    "pool": "vacation",
+    "vacationType": "summer"
   },
   "18": {
     "id": "18",
-    "title": "実習 / 教職の現実",
-    "description": "教職を取ってた人は実習。取ってない人は別イベント。",
-    "category": "学業",
+    "title": "個人ランダム枠",
+    "description": "生活と人間関係に、予定外の揺れが入る。",
+    "year": 2,
+    "category": "個人ランダム",
     "choices": [
       {
         "id": "18A",
-        "label": "地域活動を始める",
-        "effects": {
-          "time": -1,
-          "connections": 2,
-          "action_power": 2
-        }
-      },
-      {
-        "id": "18B",
-        "label": "料理にハマる",
-        "effects": {
-          "time": -1,
-          "money": 1,
-          "health": 2
-        }
-      },
-      {
-        "id": "18C",
-        "label": "スピリチュアルに目覚める",
-        "effects": {
-          "money": -2
-        }
+        "label": "ランダムイベントを受ける",
+        "effects": {},
+        "polarity": "mixed"
       }
     ],
-    "conditionalVariants": [
-      {
-        "condition": {
-          "requiredFlags": {
-            "teaching_cert": true
-          }
-        },
-        "description": "教育実習の時期がやってきた。教壇に立つ緊張感。",
-        "choices": [
-          {
-            "id": "18A",
-            "label": "実習を全力でやる",
-            "effects": {
-              "time": -3,
-              "credits": 4,
-              "health": -2,
-              "intellect": 2,
-              "connections": 1,
-              "work_tolerance": 2
-            }
-          },
-          {
-            "id": "18B",
-            "label": "なんとか乗り切る",
-            "effects": {
-              "time": -2,
-              "credits": 2,
-              "health": -1,
-              "intellect": 1,
-              "work_tolerance": 1
-            }
-          }
-        ]
-      }
-    ]
+    "pool": "random"
   },
   "19": {
     "id": "19",
-    "title": "バ畜になる",
-    "description": "バイトに支配される生活。",
-    "category": "仕事",
+    "title": "学園祭・他大学交流",
+    "description": "外の世界と混ざる学園祭。",
+    "year": 2,
+    "category": "課外+人間関係",
     "choices": [
       {
         "id": "19A",
-        "label": "もっとシフトを入れる（金が要る）",
+        "label": "他大学企画に飛び込む",
         "effects": {
-          "time": -3,
-          "money": 4,
-          "health": -2,
-          "work_tolerance": 2
-        }
+          "connections": 3,
+          "action_power": 1,
+          "health": -1
+        },
+        "polarity": "positive"
       },
       {
         "id": "19B",
-        "label": "シフトを減らして学業に戻る",
-        "effects": {
-          "time": 2,
-          "money": -1,
-          "credits": 2,
-          "health": 1,
-          "intellect": 1
-        }
+        "label": "気になる相手と学園祭を回る",
+        "effects": {},
+        "dynamicRandomChance": {
+          "formula": "romance_success",
+          "onSuccess": {
+            "romance_exp": 3,
+            "connections": 1
+          },
+          "onFailure": {
+            "romance_exp": 1,
+            "health": -1
+          }
+        },
+        "tone": "romance",
+        "storyTags": [
+          "恋愛"
+        ],
+        "polarity": "mixed"
       },
       {
         "id": "19C",
-        "label": "バイトを変える",
+        "label": "運営として裏側を支える",
         "effects": {
-          "time": -1,
-          "connections": 1,
-          "action_power": 1
-        }
+          "work_tolerance": 2,
+          "connections": 2,
+          "time": -1
+        },
+        "polarity": "positive"
       }
     ]
   },
   "20": {
     "id": "20",
-    "title": "追いコン",
-    "description": "先輩たちが卒業していく。",
-    "category": "人間関係",
+    "title": "レポート地獄",
+    "description": "複数授業の締切が重なる。",
+    "year": 2,
+    "category": "学業",
     "choices": [
       {
         "id": "20A",
-        "label": "盛大に送り出す",
+        "label": "講義と課題に集中する",
         "effects": {
-          "time": -1,
-          "money": -2,
-          "connections": 2,
-          "romance_exp": 1
-        }
+          "credits": 7,
+          "intellect": 2,
+          "time": -1
+        },
+        "polarity": "positive"
       },
       {
         "id": "20B",
-        "label": "先輩にキャリア相談する",
+        "label": "友人と分担して乗り切る",
         "effects": {
-          "money": -1,
-          "connections": 2
-        }
+          "credits": 5,
+          "connections": 2,
+          "intellect": 1
+        },
+        "polarity": "positive"
       },
       {
         "id": "20C",
-        "label": "行かない",
+        "label": "最低限で済ませて余白を作る",
         "effects": {
-          "connections": -1
-        }
+          "credits": 3,
+          "health": 1,
+          "action_power": 1
+        },
+        "polarity": "mixed"
       }
     ]
   },
   "21": {
     "id": "21",
-    "title": "タバコ・酒・夜遊び",
-    "description": "大学生活にも慣れすぎた。",
-    "category": "生活",
+    "title": "冬のスランプ",
+    "description": "疲れ、人間関係、恋愛。年末は感情も忙しい。",
+    "year": 2,
+    "category": "生活+恋愛",
     "choices": [
       {
         "id": "21A",
-        "label": "夜の世界を満喫する",
+        "label": "休む日を決める",
         "effects": {
-          "time": -2,
-          "money": -3,
-          "health": -2,
-          "connections": 2,
-          "romance_exp": 2
-        }
+          "health": 3,
+          "time": -1
+        },
+        "polarity": "positive"
       },
       {
         "id": "21B",
-        "label": "程よく楽しむ",
-        "effects": {
-          "time": -1,
-          "money": -1,
-          "health": -1,
-          "connections": 1,
-          "romance_exp": 1
-        }
+        "label": "関係をはっきりさせる",
+        "effects": {},
+        "dynamicRandomChance": {
+          "formula": "romance_success",
+          "onSuccess": {
+            "romance_exp": 3,
+            "health": 1
+          },
+          "onFailure": {
+            "romance_exp": 1,
+            "connections": -1
+          }
+        },
+        "tone": "romance",
+        "storyTags": [
+          "恋愛"
+        ],
+        "polarity": "mixed"
       },
       {
         "id": "21C",
-        "label": "健康的な生活を送る",
+        "label": "友人に相談する",
         "effects": {
-          "health": 2
-        }
+          "connections": 2,
+          "health": 1
+        },
+        "polarity": "positive"
       }
     ]
   },
   "22": {
     "id": "22",
-    "title": "休学する？",
-    "description": "ふと立ち止まる。本当にこのままでいいのか。",
-    "category": "生活",
+    "title": "後期試験 2年",
+    "description": "2年後期の専門科目を固める。",
+    "year": 2,
+    "category": "学業",
     "choices": [
       {
         "id": "22A",
-        "label": "休学して自分を見つめ直す",
+        "label": "計画的に勉強して高得点を狙う",
         "effects": {
-          "time": 3,
-          "money": -2,
-          "credits": -4,
-          "health": 1,
-          "action_power": 2
+          "credits": 11,
+          "intellect": 3,
+          "time": -1
         },
-        "flagEffects": {
-          "on_leave": true
-        }
+        "polarity": "positive"
       },
       {
         "id": "22B",
-        "label": "休学してワーホリに行く",
+        "label": "友人と過去問を共有する",
         "effects": {
-          "time": 1,
-          "money": -5,
-          "credits": -4,
-          "intellect": 1,
-          "connections": 1,
-          "work_tolerance": 1,
-          "action_power": 3
+          "credits": 9,
+          "connections": 2,
+          "intellect": 2
         },
-        "flagEffects": {
-          "on_leave": true
-        }
+        "polarity": "positive"
       },
       {
         "id": "22C",
-        "label": "休学せず前に進む",
+        "label": "一夜漬けで突破する",
         "effects": {
-          "credits": 2
-        }
+          "credits": 6,
+          "health": -2,
+          "intellect": 1
+        },
+        "polarity": "negative"
       }
     ]
   },
   "23": {
     "id": "23",
-    "title": "ミスコン・ミスターコンに出る",
-    "description": "友達にノリで推薦された。",
-    "category": "課外活動",
+    "title": "春休み自由行動",
+    "description": "2年の終わりに、来年へ向けた時間を使う。",
+    "year": 2,
+    "category": "自由プール",
     "choices": [
       {
         "id": "23A",
-        "label": "出る",
-        "effects": {
-          "time": -2,
-          "money": -2,
-          "health": -1,
-          "connections": 3,
-          "action_power": 2,
-          "romance_exp": 2
-        }
-      },
-      {
-        "id": "23B",
-        "label": "裏方で支える",
-        "effects": {
-          "time": -1,
-          "money": -1,
-          "connections": 2,
-          "work_tolerance": 1
-        }
-      },
-      {
-        "id": "23C",
-        "label": "辞退する",
-        "effects": {}
+        "label": "春休みプールから選ぶ",
+        "effects": {},
+        "polarity": "mixed"
       }
-    ]
+    ],
+    "pool": "vacation",
+    "vacationType": "spring"
   },
   "24": {
     "id": "24",
-    "title": "単位を落とす？（進級チェック）",
-    "description": "3年終了。単位は足りてる？",
-    "category": "学業",
+    "title": "春休み自由行動",
+    "description": "3年に入る前の最後の空白。",
+    "year": 2,
+    "category": "自由プール",
     "choices": [
       {
         "id": "24A",
-        "label": "余裕がある。4年は自由に使える",
-        "effects": {
-          "time": 2,
-          "health": 1
-        },
-        "condition": {
-          "minStats": {
-            "credits": 80
-          }
-        }
-      },
-      {
-        "id": "24B",
-        "label": "ギリギリだが通過。気を引き締める",
-        "effects": {
-          "credits": 2,
-          "intellect": 1
-        },
-        "condition": {
-          "minStats": {
-            "credits": 80
-          }
-        }
-      },
-      {
-        "id": "24C",
-        "label": "死ぬ気で取り返す",
-        "effects": {
-          "time": -3,
-          "credits": 6,
-          "health": -2,
-          "intellect": 1,
-          "work_tolerance": 1
-        }
-      },
-      {
-        "id": "24D",
-        "label": "留年を受け入れる",
-        "effects": {
-          "time": 2,
-          "money": -3,
-          "credits": 2,
-          "health": -1
-        }
+        "label": "春休みプールから選ぶ",
+        "effects": {},
+        "polarity": "mixed"
       }
-    ]
+    ],
+    "pool": "vacation",
+    "vacationType": "spring"
   },
   "25": {
     "id": "25",
-    "title": "ゼミに入る",
-    "description": "卒論が必要なゼミ、自由なゼミ、入らない選択。",
+    "title": "ゼミ配属",
+    "description": "専門の居場所が決まり、学び方が変わる。",
+    "year": 3,
     "category": "学業",
     "choices": [
       {
         "id": "25A",
-        "label": "ガチゼミに入る（卒論必須）",
+        "label": "第一志望ゼミに挑む",
         "effects": {
-          "time": -2,
-          "credits": 3,
-          "health": -1,
-          "intellect": 3,
+          "credits": 6,
+          "intellect": 2,
           "connections": 1
         },
         "flagEffects": {
           "in_seminar": true
-        }
+        },
+        "polarity": "positive"
       },
       {
         "id": "25B",
-        "label": "ゆるいゼミに入る",
+        "label": "雰囲気の合うゼミを選ぶ",
         "effects": {
-          "time": -1,
-          "credits": 2,
-          "intellect": 1,
+          "credits": 5,
+          "health": 1,
           "connections": 1
-        }
+        },
+        "flagEffects": {
+          "in_seminar": true
+        },
+        "polarity": "positive"
       },
       {
         "id": "25C",
-        "label": "ゼミに入らない",
+        "label": "就活に近いテーマを選ぶ",
         "effects": {
-          "time": 1,
-          "credits": 1
-        }
+          "credits": 5,
+          "work_tolerance": 1,
+          "action_power": 1
+        },
+        "flagEffects": {
+          "in_seminar": true
+        },
+        "polarity": "positive"
+      }
+    ],
+    "conditionalVariants": [
+      {
+        "condition": {
+          "faculty": "education"
+        },
+        "description": "教育学部では実習とゼミが重なり、現場での観察が増える。",
+        "choices": [
+          {
+            "id": "25ED-A",
+            "label": "教育実習に向けて準備する",
+            "effects": {
+              "credits": 7,
+              "intellect": 2,
+              "time": -1
+            },
+            "flagEffects": {
+              "in_seminar": true,
+              "teaching_cert": true
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "25ED-B",
+            "label": "子ども支援の現場に通う",
+            "effects": {
+              "credits": 5,
+              "connections": 2,
+              "work_tolerance": 1
+            },
+            "flagEffects": {
+              "in_seminar": true
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "25ED-C",
+            "label": "研究テーマを丁寧に絞る",
+            "effects": {
+              "credits": 6,
+              "intellect": 2
+            },
+            "flagEffects": {
+              "in_seminar": true
+            },
+            "polarity": "positive"
+          }
+        ]
       }
     ]
   },
   "26": {
     "id": "26",
-    "title": "分岐点：進路を決める",
-    "description": "4年の岐路。安定の就活か、挑戦の道か。",
-    "category": "分岐",
+    "title": "個人ランダム枠",
+    "description": "3年目の予定外は進路にも響き始める。",
+    "year": 3,
+    "category": "個人ランダム",
     "choices": [
       {
-        "id": "26-A",
-        "label": "安全ルート（就活メイン）",
-        "description": "堅実に内定を目指す王道コース",
+        "id": "26A",
+        "label": "ランダムイベントを受ける",
         "effects": {},
-        "branchRoute": "26A-1"
-      },
-      {
-        "id": "26-B",
-        "label": "挑戦ルート（起業・院進・独自路線）",
-        "description": "普通の就活には収まらない道",
-        "effects": {},
-        "condition": {
-          "minStats": {
-            "action_power": 6
-          }
-        },
-        "branchRoute": "26B-1"
+        "polarity": "mixed"
       }
-    ]
+    ],
+    "pool": "random"
   },
   "27": {
     "id": "27",
-    "title": "卒論を書く",
-    "description": "in_seminar の人は避けられない。",
-    "category": "学業",
+    "title": "自己分析と進路準備",
+    "description": "自分の強みを言葉にする。",
+    "year": 3,
+    "category": "キャリア",
     "choices": [
       {
         "id": "27A",
-        "label": "空いた時間で最後の挑戦",
+        "label": "キャリアセンターを使う",
         "effects": {
-          "time": -1,
-          "money": -1,
-          "intellect": 1,
-          "action_power": 2
-        }
+          "work_tolerance": 2,
+          "action_power": 1
+        },
+        "polarity": "positive"
       },
       {
         "id": "27B",
-        "label": "のんびり過ごす",
+        "label": "先輩に話を聞く",
         "effects": {
-          "time": 1,
-          "health": 2
-        }
-      }
-    ],
-    "conditionalVariants": [
-      {
-        "condition": {
-          "requiredFlags": {
-            "in_seminar": true
-          }
+          "connections": 2,
+          "work_tolerance": 1
         },
-        "description": "ゼミに入っている以上、卒論は避けられない。",
-        "choices": [
-          {
-            "id": "27A",
-            "label": "魂を込めて書く",
-            "effects": {
-              "time": -3,
-              "credits": 5,
-              "health": -2,
-              "intellect": 3,
-              "work_tolerance": 1
-            }
-          },
-          {
-            "id": "27B",
-            "label": "なんとか書き上げる",
-            "effects": {
-              "time": -2,
-              "credits": 3,
-              "health": -1,
-              "intellect": 1
-            }
-          },
-          {
-            "id": "27C",
-            "label": "教授に泣きつく",
-            "effects": {
-              "time": -1,
-              "credits": 2,
-              "connections": 1
-            }
-          }
-        ]
+        "polarity": "positive"
+      },
+      {
+        "id": "27C",
+        "label": "研究や制作実績をまとめる",
+        "effects": {
+          "intellect": 2,
+          "action_power": 1
+        },
+        "polarity": "positive"
       }
     ]
   },
   "28": {
     "id": "28",
-    "title": "恋人との関係",
-    "description": "大学4年間の恋愛の結末。",
-    "category": "恋愛",
+    "title": "前期試験 3年",
+    "description": "専門の山場。単位を大きく積む機会。",
+    "year": 3,
+    "category": "学業",
     "choices": [
       {
         "id": "28A",
-        "label": "最後のチャンスに賭ける",
+        "label": "計画的に勉強して高得点を狙う",
         "effects": {
-          "time": -1,
-          "money": -1,
-          "connections": 1,
-          "action_power": 1,
-          "romance_exp": 2
-        }
+          "credits": 12,
+          "intellect": 3,
+          "time": -1
+        },
+        "polarity": "positive"
       },
       {
         "id": "28B",
-        "label": "友情を大事にする",
+        "label": "友人と過去問を共有する",
         "effects": {
-          "money": -1,
-          "connections": 2
-        }
+          "credits": 10,
+          "connections": 2,
+          "intellect": 2
+        },
+        "polarity": "positive"
       },
       {
         "id": "28C",
-        "label": "一人の時間を楽しむ",
+        "label": "一夜漬けで突破する",
         "effects": {
-          "health": 1,
+          "credits": 7,
+          "health": -2,
           "intellect": 1
-        }
+        },
+        "polarity": "negative"
+      }
+    ]
+  },
+  "29": {
+    "id": "29",
+    "title": "夏休み自由行動",
+    "description": "サマーインターンやOB訪問も現実味を帯びる。",
+    "year": 3,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "29A",
+        "label": "夏休みプールから選ぶ",
+        "effects": {},
+        "polarity": "mixed"
+      }
+    ],
+    "pool": "vacation",
+    "vacationType": "summer"
+  },
+  "30": {
+    "id": "30",
+    "title": "進路選択",
+    "description": "就職、大学院、起業。ここで4年目の向きが決まる。",
+    "year": 3,
+    "category": "キャリア",
+    "choices": [
+      {
+        "id": "30A",
+        "label": "就活に集中する",
+        "effects": {
+          "work_tolerance": 2,
+          "connections": 1
+        },
+        "flagEffects": {
+          "career_path": "standard"
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "30B",
+        "label": "大学院進学を目指す",
+        "effects": {
+          "intellect": 2,
+          "credits": 2,
+          "time": -1
+        },
+        "flagEffects": {
+          "career_path": "grad_school"
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "30C",
+        "label": "起業する",
+        "effects": {
+          "action_power": 3,
+          "money": -1
+        },
+        "flagEffects": {
+          "career_path": "entrepreneur"
+        },
+        "polarity": "mixed"
+      }
+    ]
+  },
+  "31": {
+    "id": "31",
+    "title": "学園祭と引退",
+    "description": "続けてきた活動に区切りをつける。",
+    "year": 3,
+    "category": "課外",
+    "choices": [
+      {
+        "id": "31A",
+        "label": "後輩に引き継ぐ",
+        "effects": {
+          "connections": 2,
+          "action_power": 1,
+          "health": 1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "31B",
+        "label": "最後まで前線で動く",
+        "effects": {
+          "connections": 2,
+          "action_power": 2,
+          "health": -1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "31C",
+        "label": "進路準備を優先する",
+        "effects": {
+          "work_tolerance": 2,
+          "intellect": 1
+        },
+        "polarity": "positive"
+      }
+    ]
+  },
+  "32": {
+    "id": "32",
+    "title": "ゼミ発表と業界研究",
+    "description": "研究と社会をつなげて考える。",
+    "year": 3,
+    "category": "学業+キャリア",
+    "choices": [
+      {
+        "id": "32A",
+        "label": "講義と課題に集中する",
+        "effects": {
+          "credits": 7,
+          "intellect": 2,
+          "time": -1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "32B",
+        "label": "友人と分担して乗り切る",
+        "effects": {
+          "credits": 5,
+          "connections": 2,
+          "intellect": 1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "32C",
+        "label": "最低限で済ませて余白を作る",
+        "effects": {
+          "credits": 3,
+          "health": 1,
+          "action_power": 1
+        },
+        "polarity": "mixed"
+      }
+    ]
+  },
+  "33": {
+    "id": "33",
+    "title": "年末の関係整理",
+    "description": "研究室、人間関係、恋人との距離。進路前に気持ちも整える。",
+    "year": 3,
+    "category": "学業+恋愛",
+    "choices": [
+      {
+        "id": "33A",
+        "label": "研究室の面接準備をする",
+        "effects": {
+          "credits": 5,
+          "intellect": 2
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "33B",
+        "label": "恋人との将来を話す",
+        "effects": {},
+        "dynamicRandomChance": {
+          "formula": "romance_success",
+          "onSuccess": {
+            "romance_exp": 3,
+            "connections": 1,
+            "health": 1
+          },
+          "onFailure": {
+            "romance_exp": 1,
+            "health": -1
+          }
+        },
+        "tone": "romance",
+        "storyTags": [
+          "恋愛"
+        ],
+        "polarity": "mixed"
+      },
+      {
+        "id": "33C",
+        "label": "友人と進路の不安を共有する",
+        "effects": {
+          "connections": 2,
+          "health": 1,
+          "work_tolerance": 1
+        },
+        "polarity": "positive"
+      }
+    ]
+  },
+  "34": {
+    "id": "34",
+    "title": "後期試験 3年",
+    "description": "3年までの単位を固めきる。",
+    "year": 3,
+    "category": "学業",
+    "choices": [
+      {
+        "id": "34A",
+        "label": "計画的に勉強して高得点を狙う",
+        "effects": {
+          "credits": 12,
+          "intellect": 3,
+          "time": -1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "34B",
+        "label": "友人と過去問を共有する",
+        "effects": {
+          "credits": 10,
+          "connections": 2,
+          "intellect": 2
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "34C",
+        "label": "一夜漬けで突破する",
+        "effects": {
+          "credits": 7,
+          "health": -2,
+          "intellect": 1
+        },
+        "polarity": "negative"
+      }
+    ]
+  },
+  "35": {
+    "id": "35",
+    "title": "春休み自由行動",
+    "description": "卒論テーマや進路準備に使える春休み。",
+    "year": 3,
+    "category": "自由プール",
+    "choices": [
+      {
+        "id": "35A",
+        "label": "春休みプールから選ぶ",
+        "effects": {},
+        "polarity": "mixed"
+      }
+    ],
+    "pool": "vacation",
+    "vacationType": "spring"
+  },
+  "36": {
+    "id": "36",
+    "title": "就活解禁前夜",
+    "description": "4年目に向けて準備の質を上げる。",
+    "year": 3,
+    "category": "キャリア",
+    "choices": [
+      {
+        "id": "36A",
+        "label": "企業研究を詰める",
+        "effects": {
+          "work_tolerance": 2,
+          "connections": 1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "36B",
+        "label": "研究計画を磨く",
+        "effects": {
+          "credits": 4,
+          "intellect": 2
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "36C",
+        "label": "プロトタイプを作る",
+        "effects": {
+          "action_power": 2,
+          "intellect": 1,
+          "money": -1
+        },
+        "polarity": "mixed"
+      }
+    ]
+  },
+  "37": {
+    "id": "37",
+    "title": "4年4月 キャリア始動",
+    "description": "選んだ進路ごとに、やるべきことがはっきり分かれる。",
+    "year": 4,
+    "category": "キャリア分岐",
+    "choices": [
+      {
+        "id": "37DEFAULT",
+        "label": "まだ進路を決めきれず、就活の準備に寄せる",
+        "effects": {
+          "work_tolerance": 1,
+          "connections": 1
+        },
+        "flagEffects": {
+          "career_path": "standard"
+        },
+        "polarity": "mixed"
       }
     ],
     "conditionalVariants": [
       {
         "condition": {
           "requiredFlags": {
-            "has_partner": true
+            "career_path": "standard"
           }
         },
-        "description": "恋人がいる。卒業後の関係をどうする？",
         "choices": [
           {
-            "id": "28A",
-            "label": "結婚を考える",
+            "id": "37ST-A",
+            "label": "合同説明会で視野を広げる",
             "effects": {
-              "time": -1,
-              "money": -2,
-              "health": 1,
               "connections": 2,
-              "romance_exp": 3
-            }
+              "work_tolerance": 2
+            },
+            "polarity": "positive"
           },
           {
-            "id": "28B",
-            "label": "遠距離になるけど続ける",
+            "id": "37ST-B",
+            "label": "ESをまとめて出す",
             "effects": {
-              "money": -1,
+              "work_tolerance": 3,
+              "time": -1
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "37ST-C",
+            "label": "先輩に添削してもらう",
+            "effects": {
+              "connections": 2,
+              "work_tolerance": 1
+            },
+            "polarity": "positive"
+          }
+        ]
+      },
+      {
+        "condition": {
+          "requiredFlags": {
+            "career_path": "grad_school"
+          }
+        },
+        "choices": [
+          {
+            "id": "37GR-A",
+            "label": "院試対策を始める",
+            "effects": {
+              "intellect": 3,
+              "credits": 2,
+              "time": -1
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "37GR-B",
+            "label": "研究発表で鍛える",
+            "effects": {
+              "intellect": 2,
               "connections": 1,
-              "action_power": 1,
-              "romance_exp": 1
-            }
+              "credits": 2
+            },
+            "polarity": "positive"
           },
           {
-            "id": "28C",
-            "label": "別れる",
+            "id": "37GR-C",
+            "label": "指導教員に相談する",
             "effects": {
-              "time": 1,
-              "health": -2,
-              "connections": -1,
-              "romance_exp": 1
-            }
+              "intellect": 1,
+              "connections": 2,
+              "credits": 2
+            },
+            "polarity": "positive"
+          }
+        ]
+      },
+      {
+        "condition": {
+          "requiredFlags": {
+            "career_path": "entrepreneur"
+          }
+        },
+        "choices": [
+          {
+            "id": "37EN-A",
+            "label": "事業計画を作る",
+            "effects": {
+              "action_power": 2,
+              "intellect": 1,
+              "money": -1
+            },
+            "polarity": "mixed"
+          },
+          {
+            "id": "37EN-B",
+            "label": "仲間を集める",
+            "effects": {
+              "action_power": 2,
+              "connections": 2
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "37EN-C",
+            "label": "小さく販売して試す",
+            "effects": {
+              "action_power": 3,
+              "work_tolerance": 1,
+              "health": -1
+            },
+            "polarity": "positive"
           }
         ]
       }
     ]
   },
-  "29": {
-    "id": "29",
-    "title": "初任給・初ボーナス / 研修",
-    "description": "社会人の入り口が見えてきた。",
-    "category": "仕事",
+  "38": {
+    "id": "38",
+    "title": "4年5月 面接・院試・営業",
+    "description": "本番の負荷が高くなる。準備不足はここで見える。",
+    "year": 4,
+    "category": "キャリア分岐",
     "choices": [
       {
-        "id": "29A",
-        "label": "仕事に全力投球",
+        "id": "38DEFAULT",
+        "label": "まだ進路を決めきれず、就活の準備に寄せる",
         "effects": {
-          "time": -2,
-          "money": 4,
-          "health": -1,
-          "intellect": 1,
-          "connections": 1,
-          "work_tolerance": 2
-        }
+          "work_tolerance": 1,
+          "connections": 1
+        },
+        "flagEffects": {
+          "career_path": "standard"
+        },
+        "polarity": "mixed"
+      }
+    ],
+    "conditionalVariants": [
+      {
+        "condition": {
+          "requiredFlags": {
+            "career_path": "standard"
+          }
+        },
+        "choices": [
+          {
+            "id": "38ST-A",
+            "label": "面接ラッシュを受け切る",
+            "effects": {
+              "work_tolerance": 3,
+              "connections": 1,
+              "health": -1
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "38ST-B",
+            "label": "業界を絞って深掘りする",
+            "effects": {
+              "work_tolerance": 2,
+              "intellect": 1
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "38ST-C",
+            "label": "少し休んで立て直す",
+            "effects": {
+              "health": 2,
+              "work_tolerance": 1
+            },
+            "polarity": "positive"
+          }
+        ]
       },
       {
-        "id": "29B",
-        "label": "ワークライフバランス重視",
-        "effects": {
-          "money": 2,
-          "health": 1,
-          "connections": 1,
-          "work_tolerance": 1
-        }
+        "condition": {
+          "requiredFlags": {
+            "career_path": "grad_school"
+          },
+          "minStats": {
+            "intellect": 8
+          }
+        },
+        "description": "知性が足りている。院試本番に挑める。",
+        "choices": [
+          {
+            "id": "38GR-A",
+            "label": "院試本番で力を出す",
+            "effects": {
+              "credits": 4,
+              "intellect": 2
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "38GR-B",
+            "label": "研究計画で差をつける",
+            "effects": {
+              "credits": 4,
+              "intellect": 1,
+              "connections": 1
+            },
+            "polarity": "positive"
+          }
+        ]
       },
       {
-        "id": "29C",
-        "label": "まだ社会人じゃない（院進・留学中）",
-        "effects": {
-          "credits": 2,
-          "intellect": 2,
-          "action_power": 1
-        }
+        "condition": {
+          "requiredFlags": {
+            "career_path": "grad_school"
+          }
+        },
+        "description": "知性が不足していて、院試の壁が高い。",
+        "choices": [
+          {
+            "id": "38GR-F",
+            "label": "院試の厳しさを受け止める",
+            "effects": {
+              "health": -1,
+              "intellect": 1
+            },
+            "flagEffects": {
+              "career_failed": true
+            },
+            "polarity": "negative"
+          }
+        ]
+      },
+      {
+        "condition": {
+          "requiredFlags": {
+            "career_path": "entrepreneur"
+          }
+        },
+        "choices": [
+          {
+            "id": "38EN-A",
+            "label": "営業に出る",
+            "effects": {
+              "action_power": 2,
+              "work_tolerance": 2,
+              "health": -1
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "38EN-B",
+            "label": "製品を作り込む",
+            "effects": {
+              "action_power": 2,
+              "intellect": 1,
+              "money": -1
+            },
+            "polarity": "mixed"
+          },
+          {
+            "id": "38EN-C",
+            "label": "支援者に相談する",
+            "effects": {
+              "connections": 2,
+              "action_power": 1
+            },
+            "polarity": "positive"
+          }
+        ]
       }
     ]
   },
-  "30": {
-    "id": "30",
-    "title": "追いコン・卒業旅行",
-    "description": "最後の思い出作り。",
-    "category": "人間関係",
+  "39": {
+    "id": "39",
+    "title": "4年6月 進路結果",
+    "description": "選んだ道の結果が見え始める。",
+    "year": 4,
+    "category": "キャリア分岐",
     "choices": [
       {
-        "id": "30A",
-        "label": "卒業旅行に全力",
+        "id": "39DEFAULT",
+        "label": "まだ進路を決めきれず、就活の準備に寄せる",
         "effects": {
-          "time": -2,
-          "money": -4,
+          "work_tolerance": 1,
+          "connections": 1
+        },
+        "flagEffects": {
+          "career_path": "standard"
+        },
+        "polarity": "mixed"
+      }
+    ],
+    "conditionalVariants": [
+      {
+        "condition": {
+          "requiredFlags": {
+            "career_path": "standard"
+          }
+        },
+        "choices": [
+          {
+            "id": "39ST-A",
+            "label": "内定を取りに行く",
+            "effects": {
+              "work_tolerance": 3,
+              "connections": 1
+            },
+            "randomChance": 0.75,
+            "randomBonusEffects": {
+              "money": 1
+            },
+            "randomPenaltyEffects": {
+              "health": -1
+            },
+            "polarity": "mixed"
+          },
+          {
+            "id": "39ST-B",
+            "label": "納得できるまで続ける",
+            "effects": {
+              "action_power": 2,
+              "work_tolerance": 2,
+              "health": -1
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "39ST-C",
+            "label": "準備不足で投げ出してしまう",
+            "effects": {
+              "health": -2
+            },
+            "flagEffects": {
+              "career_failed": true
+            },
+            "polarity": "negative"
+          }
+        ]
+      },
+      {
+        "condition": {
+          "requiredFlags": {
+            "career_path": "grad_school"
+          },
+          "minStats": {
+            "intellect": 8
+          }
+        },
+        "choices": [
+          {
+            "id": "39GR-A",
+            "label": "合格発表を受けて研究室を決める",
+            "effects": {
+              "credits": 5,
+              "intellect": 1,
+              "connections": 1
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "39GR-B",
+            "label": "研究テーマをさらに磨く",
+            "effects": {
+              "credits": 4,
+              "intellect": 2
+            },
+            "polarity": "positive"
+          }
+        ]
+      },
+      {
+        "condition": {
+          "requiredFlags": {
+            "career_path": "grad_school"
+          }
+        },
+        "choices": [
+          {
+            "id": "39GR-F",
+            "label": "全落ちから次の選択を考える",
+            "effects": {
+              "health": -1,
+              "action_power": 1
+            },
+            "flagEffects": {
+              "career_failed": true
+            },
+            "polarity": "negative"
+          }
+        ]
+      },
+      {
+        "condition": {
+          "requiredFlags": {
+            "career_path": "entrepreneur"
+          },
+          "minStats": {
+            "action_power": 7,
+            "intellect": 5
+          }
+        },
+        "choices": [
+          {
+            "id": "39EN-A",
+            "label": "初期顧客をつかむ",
+            "effects": {
+              "action_power": 2,
+              "connections": 2,
+              "money": 1
+            },
+            "polarity": "positive"
+          },
+          {
+            "id": "39EN-B",
+            "label": "事業を絞って継続する",
+            "effects": {
+              "action_power": 2,
+              "work_tolerance": 1,
+              "intellect": 1
+            },
+            "polarity": "positive"
+          }
+        ]
+      },
+      {
+        "condition": {
+          "requiredFlags": {
+            "career_path": "entrepreneur"
+          }
+        },
+        "choices": [
+          {
+            "id": "39EN-F",
+            "label": "資金と実行力の不足で事業を畳む",
+            "effects": {
+              "money": -2,
+              "health": -1
+            },
+            "flagEffects": {
+              "career_failed": true
+            },
+            "polarity": "negative"
+          }
+        ]
+      }
+    ]
+  },
+  "40": {
+    "id": "40",
+    "title": "個人ランダム枠",
+    "description": "最後の夏前に、個人差のある出来事が起きる。",
+    "year": 4,
+    "category": "個人ランダム",
+    "choices": [
+      {
+        "id": "40A",
+        "label": "ランダムイベントを受ける",
+        "effects": {},
+        "polarity": "mixed"
+      }
+    ],
+    "pool": "random"
+  },
+  "41": {
+    "id": "41",
+    "title": "卒論中間発表",
+    "description": "卒業研究の中間地点。人前で説明する。",
+    "year": 4,
+    "category": "学業",
+    "choices": [
+      {
+        "id": "41A",
+        "label": "講義と課題に集中する",
+        "effects": {
+          "credits": 7,
+          "intellect": 2,
+          "time": -1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "41B",
+        "label": "友人と分担して乗り切る",
+        "effects": {
+          "credits": 5,
+          "connections": 2,
+          "intellect": 1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "41C",
+        "label": "最低限で済ませて余白を作る",
+        "effects": {
+          "credits": 3,
+          "health": 1,
+          "action_power": 1
+        },
+        "polarity": "mixed"
+      }
+    ]
+  },
+  "42": {
+    "id": "42",
+    "title": "卒論序盤",
+    "description": "調査、実験、執筆。地味な積み重ねが必要になる。",
+    "year": 4,
+    "category": "学業",
+    "choices": [
+      {
+        "id": "42A",
+        "label": "講義と課題に集中する",
+        "effects": {
+          "credits": 7,
+          "intellect": 2,
+          "time": -1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "42B",
+        "label": "友人と分担して乗り切る",
+        "effects": {
+          "credits": 5,
+          "connections": 2,
+          "intellect": 1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "42C",
+        "label": "最低限で済ませて余白を作る",
+        "effects": {
+          "credits": 3,
+          "health": 1,
+          "action_power": 1
+        },
+        "polarity": "mixed"
+      }
+    ]
+  },
+  "43": {
+    "id": "43",
+    "title": "最後の学園祭",
+    "description": "学生生活最後の大きなイベント。",
+    "year": 4,
+    "category": "課外+恋愛",
+    "choices": [
+      {
+        "id": "43A",
+        "label": "最後まで仲間と作りきる",
+        "effects": {
           "connections": 3,
           "action_power": 1,
-          "romance_exp": 2
-        }
-      },
-      {
-        "id": "30B",
-        "label": "追いコンで泣く",
-        "effects": {
-          "time": -1,
-          "money": -2,
-          "connections": 2,
-          "romance_exp": 1
-        }
-      },
-      {
-        "id": "30C",
-        "label": "静かに大学生活を振り返る",
-        "effects": {
-          "health": 2,
-          "intellect": 1
-        }
-      }
-    ]
-  },
-  "31": {
-    "id": "31",
-    "title": "別れと旅立ち",
-    "description": "4年間が終わる。",
-    "category": "人間関係",
-    "choices": [
-      {
-        "id": "31A",
-        "label": "みんなに感謝を伝える",
-        "effects": {
-          "health": 1,
-          "connections": 2,
-          "romance_exp": 1
-        }
-      },
-      {
-        "id": "31B",
-        "label": "後輩に何かを残す",
-        "effects": {
-          "intellect": 1,
-          "connections": 1,
-          "action_power": 1
-        }
-      },
-      {
-        "id": "31C",
-        "label": "黙って去る（カッコつけ）",
-        "effects": {
-          "action_power": 1
-        }
-      }
-    ]
-  },
-  "32": {
-    "id": "32",
-    "title": "ゴール — あなたの大学生活",
-    "description": "4年間の結果が出る。",
-    "category": "ゴール",
-    "choices": []
-  },
-  "9A-1": {
-    "id": "9A-1",
-    "title": "新歓で盛り上がる",
-    "description": "サークルの新歓。先輩がやたら優しい。",
-    "category": "課外活動",
-    "choices": [
-      {
-        "id": "9A-1A",
-        "label": "全力で参加して顔を売る",
-        "effects": {
-          "time": -1,
-          "money": -2,
-          "connections": 3,
-          "romance_exp": 1
-        }
-      },
-      {
-        "id": "9A-1B",
-        "label": "様子見で控えめに",
-        "effects": {
-          "money": -1,
-          "connections": 1
-        }
-      }
-    ]
-  },
-  "9A-2": {
-    "id": "9A-2",
-    "title": "合宿・練習の日々",
-    "description": "夏合宿。キツいが楽しい。",
-    "category": "課外活動",
-    "choices": [
-      {
-        "id": "9A-2A",
-        "label": "全力投球",
-        "effects": {
-          "time": -2,
-          "money": -2,
-          "health": -1,
-          "connections": 2,
-          "work_tolerance": 1,
-          "action_power": 1
-        }
-      },
-      {
-        "id": "9A-2B",
-        "label": "程よくやる",
-        "effects": {
-          "time": -1,
-          "money": -1,
-          "connections": 1
-        }
-      },
-      {
-        "id": "9A-2C",
-        "label": "フェードアウトする",
-        "effects": {
-          "time": 2,
-          "connections": -2
-        }
-      }
-    ]
-  },
-  "9B-1": {
-    "id": "9B-1",
-    "title": "自分の時間の使い方",
-    "description": "組織に属さない自由がある。何をする？",
-    "category": "生活",
-    "choices": [
-      {
-        "id": "9B-1A",
-        "label": "読書・勉強に没頭",
-        "effects": {
-          "time": -1,
-          "credits": 1,
-          "intellect": 3
-        }
-      },
-      {
-        "id": "9B-1B",
-        "label": "地域のイベントに顔を出す",
-        "effects": {
-          "time": -1,
-          "connections": 2,
-          "action_power": 2
-        }
-      },
-      {
-        "id": "9B-1C",
-        "label": "ひたすらゲーム・趣味",
-        "effects": {
-          "money": -1,
-          "health": 1
-        }
-      }
-    ]
-  },
-  "9B-2": {
-    "id": "9B-2",
-    "title": "孤独か自由か",
-    "description": "周りがサークルで忙しそうだ。自分は…",
-    "category": "生活",
-    "choices": [
-      {
-        "id": "9B-2A",
-        "label": "自分のペースに自信を持つ",
-        "effects": {
-          "health": 1,
-          "action_power": 2
-        }
-      },
-      {
-        "id": "9B-2B",
-        "label": "今からでもどこかに入る",
-        "effects": {
-          "time": -1,
-          "money": -1,
-          "connections": 2
-        }
-      },
-      {
-        "id": "9B-2C",
-        "label": "SNSで繋がりを探す",
-        "effects": {
-          "connections": 1,
-          "romance_exp": 1
-        }
-      }
-    ]
-  },
-  "17A-1": {
-    "id": "17A-1",
-    "title": "留学準備",
-    "description": "書類、ビザ、語学スコア…やることだらけ。",
-    "category": "留学",
-    "choices": [
-      {
-        "id": "17A-1A",
-        "label": "交換留学（費用抑えめ）",
-        "effects": {
-          "time": -2,
-          "money": -3,
-          "credits": 2,
-          "intellect": 2,
-          "action_power": 1
-        },
-        "flagEffects": {
-          "studying_abroad": true
-        }
-      },
-      {
-        "id": "17A-1B",
-        "label": "私費留学（自由度高い）",
-        "effects": {
-          "time": -2,
-          "money": -6,
-          "intellect": 2,
-          "action_power": 2
-        },
-        "flagEffects": {
-          "studying_abroad": true
-        }
-      }
-    ]
-  },
-  "17A-2": {
-    "id": "17A-2",
-    "title": "異国の日々",
-    "description": "言葉も文化も違う世界で暮らす。",
-    "category": "留学",
-    "choices": [
-      {
-        "id": "17A-2A",
-        "label": "現地の学生と積極的に交流",
-        "effects": {
-          "time": -1,
-          "money": -2,
-          "credits": 2,
-          "intellect": 2,
-          "connections": 3,
-          "action_power": 2
-        }
-      },
-      {
-        "id": "17A-2B",
-        "label": "日本人コミュニティで過ごす",
-        "effects": {
-          "money": -1,
-          "credits": 1,
-          "intellect": 1,
-          "connections": 1
-        }
-      },
-      {
-        "id": "17A-2C",
-        "label": "一人で旅をしまくる",
-        "effects": {
-          "time": -1,
-          "money": -3,
-          "health": -1,
-          "intellect": 1,
-          "action_power": 3
-        }
-      }
-    ]
-  },
-  "17A-3": {
-    "id": "17A-3",
-    "title": "帰国後",
-    "description": "帰ってきた。日本が狭く感じる。",
-    "category": "留学",
-    "choices": [
-      {
-        "id": "17A-3A",
-        "label": "留学経験を就活に活かす",
-        "effects": {
-          "intellect": 1,
-          "connections": 1,
-          "work_tolerance": 1
-        }
-      },
-      {
-        "id": "17A-3B",
-        "label": "もう一度行きたい…ワーホリを考える",
-        "effects": {
-          "time": -1,
-          "money": -2,
-          "action_power": 2
-        }
-      },
-      {
-        "id": "17A-3C",
-        "label": "留学ロスで何も手につかない",
-        "effects": {
-          "time": -1,
-          "credits": -1,
           "health": -1
-        }
-      }
-    ]
-  },
-  "17B-1": {
-    "id": "17B-1",
-    "title": "インターンに行く",
-    "description": "3年になったら就活…その前にインターン。",
-    "category": "仕事",
-    "choices": [
-      {
-        "id": "17B-1A",
-        "label": "大手の夏インターン",
-        "effects": {
-          "time": -3,
-          "money": 1,
-          "health": -1,
-          "intellect": 1,
-          "connections": 2,
-          "work_tolerance": 2
-        }
-      },
-      {
-        "id": "17B-1B",
-        "label": "スタートアップで武者修行",
-        "effects": {
-          "time": -3,
-          "money": 1,
-          "health": -2,
-          "intellect": 1,
-          "connections": 1,
-          "work_tolerance": 2,
-          "action_power": 2
-        }
-      },
-      {
-        "id": "17B-1C",
-        "label": "短期で様子見",
-        "effects": {
-          "time": -1,
-          "intellect": 1,
-          "connections": 1,
-          "work_tolerance": 1
-        }
-      }
-    ]
-  },
-  "17B-2": {
-    "id": "17B-2",
-    "title": "ビジネスの世界を覗く",
-    "description": "名刺交換、プレゼン、ビジネスマナー。大人の世界。",
-    "category": "仕事",
-    "choices": [
-      {
-        "id": "17B-2A",
-        "label": "積極的に学ぶ",
-        "effects": {
-          "time": -1,
-          "intellect": 1,
-          "connections": 2,
-          "work_tolerance": 2
-        }
-      },
-      {
-        "id": "17B-2B",
-        "label": "言われたことだけやる",
-        "effects": {
-          "money": 1,
-          "work_tolerance": 1
-        }
-      }
-    ]
-  },
-  "17B-3": {
-    "id": "17B-3",
-    "title": "将来像が見えてくる",
-    "description": "なんとなく自分の向き不向きがわかってきた。",
-    "category": "仕事",
-    "choices": [
-      {
-        "id": "17B-3A",
-        "label": "このまま就活に突き進む",
-        "effects": {
-          "time": -1,
-          "health": -1,
-          "connections": 1,
-          "work_tolerance": 1
-        }
-      },
-      {
-        "id": "17B-3B",
-        "label": "やりたいことを考え直す",
-        "effects": {
-          "intellect": 1,
-          "action_power": 1
-        }
-      },
-      {
-        "id": "17B-3C",
-        "label": "大学院も視野に入れる",
-        "effects": {
-          "credits": 2,
-          "intellect": 2
-        }
-      }
-    ]
-  },
-  "17C-1": {
-    "id": "17C-1",
-    "title": "夏休み、新しいことを始めてみる",
-    "description": "何かを変えたい気分。",
-    "category": "生活",
-    "choices": [
-      {
-        "id": "17C-1A",
-        "label": "ボランティアに参加する",
-        "effects": {
-          "time": -1,
-          "connections": 2,
-          "action_power": 2
-        }
-      },
-      {
-        "id": "17C-1B",
-        "label": "プログラミングを学ぶ",
-        "effects": {
-          "time": -2,
-          "money": -1,
-          "intellect": 2,
-          "work_tolerance": 1
-        }
-      },
-      {
-        "id": "17C-1C",
-        "label": "ダラダラ過ごす",
-        "effects": {
-          "time": 2,
-          "health": 1,
-          "action_power": -1
-        }
-      }
-    ]
-  },
-  "17C-2": {
-    "id": "17C-2",
-    "title": "意識高い系の動画に感化される",
-    "description": "YouTubeで起業家の動画を見て火がついた。",
-    "category": "生活",
-    "choices": [
-      {
-        "id": "17C-2A",
-        "label": "翼を広げる会（イベント）に参加する",
-        "effects": {
-          "time": -1,
-          "money": -2,
-          "connections": 1,
-          "action_power": 2
         },
-        "randomChance": 0.2,
-        "randomBonusEffects": {},
-        "randomPenaltyEffects": {
-          "money": -3,
-          "action_power": -1
-        }
+        "polarity": "positive"
       },
       {
-        "id": "17C-2B",
-        "label": "同世代の学生起業家と会ってみる",
+        "id": "43B",
+        "label": "恋人と最後の学園祭を回る",
         "effects": {
-          "time": -1,
-          "money": -1,
-          "intellect": 1,
-          "connections": 2,
-          "action_power": 2
-        }
-      },
-      {
-        "id": "17C-2C",
-        "label": "冷静になる。自分のペースでいい。",
-        "effects": {
+          "romance_exp": 2,
           "health": 1
-        }
+        },
+        "condition": {
+          "requiredFlags": {
+            "has_partner": true
+          }
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "43C",
+        "label": "別の相手に惹かれてしまう",
+        "effects": {},
+        "cheatAction": true,
+        "condition": {
+          "requiredFlags": {
+            "has_partner": true
+          }
+        },
+        "polarity": "negative"
+      },
+      {
+        "id": "43D",
+        "label": "卒業前に思いを伝える",
+        "effects": {},
+        "dynamicRandomChance": {
+          "formula": "romance_success",
+          "onSuccess": {
+            "romance_exp": 3,
+            "connections": 1
+          },
+          "onFailure": {
+            "romance_exp": 1,
+            "health": -1
+          }
+        },
+        "tone": "romance",
+        "storyTags": [
+          "恋愛"
+        ],
+        "polarity": "mixed"
       }
     ]
   },
-  "17C-3": {
-    "id": "17C-3",
-    "title": "何者かになりたい",
-    "description": "みんな何かしら始めてる。焦る。",
-    "category": "生活",
+  "44": {
+    "id": "44",
+    "title": "卒論追い込み",
+    "description": "終わらせる力が試される。",
+    "year": 4,
+    "category": "学業",
     "choices": [
       {
-        "id": "17C-3A",
-        "label": "資格に走る",
+        "id": "44A",
+        "label": "講義と課題に集中する",
         "effects": {
-          "time": -2,
-          "money": -1,
-          "intellect": 2
-        }
-      },
-      {
-        "id": "17C-3B",
-        "label": "団体を立ち上げる",
-        "effects": {
-          "time": -2,
-          "money": -1,
-          "health": -1,
-          "connections": 2,
-          "action_power": 3
-        }
-      },
-      {
-        "id": "17C-3C",
-        "label": "自分探しの旅に出る",
-        "effects": {
-          "time": -1,
-          "money": -2,
-          "action_power": 2
-        }
-      }
-    ]
-  },
-  "26A-1": {
-    "id": "26A-1",
-    "title": "就活戦線",
-    "description": "エントリーシート、面接、お祈りメール。",
-    "category": "仕事",
-    "choices": [
-      {
-        "id": "26A-1A",
-        "label": "大手を狙う",
-        "effects": {
-          "time": -3,
-          "money": -2,
-          "health": -2,
-          "intellect": 1,
-          "connections": 1,
-          "work_tolerance": 1
-        }
-      },
-      {
-        "id": "26A-1B",
-        "label": "中小・ベンチャーを攻める",
-        "effects": {
-          "time": -2,
-          "money": -1,
-          "health": -1,
-          "connections": 1,
-          "work_tolerance": 1,
-          "action_power": 1
-        }
-      },
-      {
-        "id": "26A-1C",
-        "label": "公務員試験",
-        "effects": {
-          "time": -3,
-          "money": -1,
-          "health": -2,
+          "credits": 8,
           "intellect": 2,
-          "work_tolerance": 1
-        }
+          "time": -1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "44B",
+        "label": "友人と分担して乗り切る",
+        "effects": {
+          "credits": 6,
+          "connections": 2,
+          "intellect": 1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "44C",
+        "label": "最低限で済ませて余白を作る",
+        "effects": {
+          "credits": 4,
+          "health": 1,
+          "action_power": 1
+        },
+        "polarity": "mixed"
       }
     ]
   },
-  "26A-2": {
-    "id": "26A-2",
-    "title": "内定",
-    "description": "ついに。",
-    "category": "仕事",
+  "45": {
+    "id": "45",
+    "title": "卒業論文提出",
+    "description": "4年間の学びを形にする最大の山場。",
+    "year": 4,
+    "category": "学業",
     "choices": [
       {
-        "id": "26A-2A",
-        "label": "第一志望に決まった！",
+        "id": "45A",
+        "label": "完成度を上げて提出する",
         "effects": {
-          "health": 2
+          "credits": 15,
+          "intellect": 3,
+          "health": -1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "45B",
+        "label": "最低限まとめて提出する",
+        "effects": {
+          "credits": 12,
+          "work_tolerance": 2
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "45C",
+        "label": "仲間と励まし合って乗り切る",
+        "effects": {
+          "credits": 13,
+          "connections": 2,
+          "health": -1
+        },
+        "polarity": "positive"
+      }
+    ]
+  },
+  "46": {
+    "id": "46",
+    "title": "最終試験・単位確認",
+    "description": "卒業要件を確認し、最後の試験を受ける。",
+    "year": 4,
+    "category": "学業",
+    "choices": [
+      {
+        "id": "46A",
+        "label": "計画的に勉強して高得点を狙う",
+        "effects": {
+          "credits": 12,
+          "intellect": 3,
+          "time": -1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "46B",
+        "label": "友人と過去問を共有する",
+        "effects": {
+          "credits": 10,
+          "connections": 2,
+          "intellect": 2
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "46C",
+        "label": "一夜漬けで突破する",
+        "effects": {
+          "credits": 7,
+          "health": -2,
+          "intellect": 1
+        },
+        "polarity": "negative"
+      }
+    ]
+  },
+  "47": {
+    "id": "47",
+    "title": "卒業判定",
+    "description": "124単位に届いているか。足りなければ留年が見えてくる。",
+    "year": 4,
+    "category": "学業",
+    "choices": [
+      {
+        "id": "47A",
+        "label": "単位を確認して卒業手続きを進める",
+        "effects": {
+          "health": 1,
+          "connections": 1
         },
         "condition": {
           "minStats": {
-            "work_tolerance": 5,
-            "connections": 4
+            "credits": 124
           }
-        }
+        },
+        "polarity": "positive"
       },
       {
-        "id": "26A-2B",
-        "label": "妥協したけど決まった",
+        "id": "47B",
+        "label": "教授に相談して最後の調整をする",
         "effects": {
+          "credits": 2,
+          "work_tolerance": 1,
+          "health": -1
+        },
+        "polarity": "mixed"
+      },
+      {
+        "id": "47C",
+        "label": "現実を受け止めて次年度の計画を作る",
+        "effects": {
+          "health": 1,
+          "action_power": 1
+        },
+        "polarity": "mixed"
+      }
+    ]
+  },
+  "48": {
+    "id": "48",
+    "title": "卒業式",
+    "description": "4年間の選択を振り返り、それぞれの次へ進む。",
+    "year": 4,
+    "category": "人間関係",
+    "choices": [
+      {
+        "id": "48A",
+        "label": "仲間と写真を撮る",
+        "effects": {
+          "connections": 2,
+          "health": 1
+        },
+        "polarity": "positive"
+      },
+      {
+        "id": "48B",
+        "label": "お世話になった人へ挨拶する",
+        "effects": {
+          "connections": 2,
           "work_tolerance": 1
-        }
+        },
+        "polarity": "positive"
       },
       {
-        "id": "26A-2C",
-        "label": "まだ決まってない…",
+        "id": "48C",
+        "label": "静かにキャンパスを歩く",
         "effects": {
-          "time": -2,
-          "money": -1,
-          "health": -3
-        }
-      }
-    ]
-  },
-  "26B-1": {
-    "id": "26B-1",
-    "title": "独自の道",
-    "description": "普通の就活には収まらない。",
-    "category": "挑戦",
-    "choices": [
-      {
-        "id": "26B-1A",
-        "label": "起業する",
-        "effects": {
-          "time": -3,
-          "money": -5,
-          "health": -2,
-          "intellect": 1,
-          "connections": 2,
-          "work_tolerance": 1,
-          "action_power": 3
-        }
-      },
-      {
-        "id": "26B-1B",
-        "label": "大学院に進学する",
-        "effects": {
-          "time": -2,
-          "money": -3,
-          "credits": 4,
-          "health": -1,
-          "intellect": 3,
-          "connections": 1
-        }
-      },
-      {
-        "id": "26B-1C",
-        "label": "フリーランスで生きる",
-        "effects": {
-          "time": -2,
-          "money": 1,
-          "health": -1,
-          "intellect": 1,
-          "work_tolerance": 1,
-          "action_power": 2
-        }
-      }
-    ]
-  },
-  "26B-2": {
-    "id": "26B-2",
-    "title": "挑戦の結果",
-    "description": "賭けた結果が出始める。",
-    "category": "挑戦",
-    "choices": [
-      {
-        "id": "26B-2A",
-        "label": "手応えがある。突き進む",
-        "effects": {
-          "time": -1,
-          "health": -1,
-          "intellect": 1,
-          "connections": 1,
-          "action_power": 2
-        }
-      },
-      {
-        "id": "26B-2B",
-        "label": "苦しいが仲間がいる",
-        "effects": {
-          "time": -1,
-          "money": -2,
-          "health": -1,
-          "connections": 2,
-          "work_tolerance": 1,
-          "action_power": 1
-        }
-      },
-      {
-        "id": "26B-2C",
-        "label": "失敗。でも経験になった",
-        "effects": {
-          "time": 1,
-          "money": -1,
-          "health": -1,
-          "intellect": 1,
-          "work_tolerance": 1,
-          "action_power": 1
-        }
+          "health": 2,
+          "intellect": 1
+        },
+        "polarity": "positive"
       }
     ]
   }

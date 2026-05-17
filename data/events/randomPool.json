@@ -1,0 +1,291 @@
+{
+  "random_wallet": {
+    "id": "random_wallet",
+    "title": "財布を拾った",
+    "description": "交番に届けたら、思わぬ信頼につながった。",
+    "year": null,
+    "category": "ランダム",
+    "choices": [
+      {
+        "id": "random_wallet_A",
+        "label": "届け出る",
+        "effects": {
+          "connections": 1,
+          "health": 1
+        },
+        "badLuckDelta": -1,
+        "polarity": "positive"
+      }
+    ],
+    "weight": 10,
+    "polarity": "positive"
+  },
+  "random_sns": {
+    "id": "random_sns",
+    "title": "SNSがバズる",
+    "description": "何気ない投稿が広がった。",
+    "year": null,
+    "category": "ランダム",
+    "choices": [
+      {
+        "id": "random_sns_A",
+        "label": "流れに乗る",
+        "effects": {
+          "connections": 2,
+          "action_power": 1
+        },
+        "badLuckDelta": -1,
+        "polarity": "positive"
+      }
+    ],
+    "weight": 8,
+    "polarity": "positive"
+  },
+  "random_sick": {
+    "id": "random_sick",
+    "title": "急な体調不良",
+    "description": "無理がたたって寝込む。",
+    "year": null,
+    "category": "ランダム",
+    "choices": [
+      {
+        "id": "random_sick_A",
+        "label": "休んで回復する",
+        "effects": {
+          "health": -2,
+          "time": -1
+        },
+        "badLuckDelta": 1,
+        "polarity": "negative"
+      }
+    ],
+    "weight": 7,
+    "polarity": "negative"
+  },
+  "random_expense": {
+    "id": "random_expense",
+    "title": "急な出費",
+    "description": "家電や交通費で財布が軽くなる。",
+    "year": null,
+    "category": "ランダム",
+    "choices": [
+      {
+        "id": "random_expense_A",
+        "label": "支払って立て直す",
+        "effects": {
+          "money": -3,
+          "work_tolerance": 1
+        },
+        "badLuckDelta": 1,
+        "polarity": "negative"
+      }
+    ],
+    "weight": 7,
+    "polarity": "negative"
+  },
+  "random_senior": {
+    "id": "random_senior",
+    "title": "先輩に誘われる",
+    "description": "思いがけない場で人脈が増える。",
+    "year": null,
+    "category": "ランダム",
+    "choices": [
+      {
+        "id": "random_senior_A",
+        "label": "参加する",
+        "effects": {
+          "connections": 2,
+          "romance_exp": 1,
+          "health": -1
+        },
+        "badLuckDelta": -1,
+        "polarity": "positive"
+      }
+    ],
+    "weight": 9,
+    "polarity": "positive"
+  },
+  "random_job_trouble": {
+    "id": "random_job_trouble",
+    "title": "バイト先トラブル",
+    "description": "急な欠員対応で疲れが出る。",
+    "year": null,
+    "category": "ランダム",
+    "choices": [
+      {
+        "id": "random_job_trouble_A",
+        "label": "代打で入る",
+        "effects": {
+          "money": 2,
+          "work_tolerance": 2,
+          "health": -2
+        },
+        "badLuckDelta": 1,
+        "polarity": "mixed"
+      }
+    ],
+    "weight": 8,
+    "polarity": "negative",
+    "condition": {
+      "requiredAnyFlags": [
+        {
+          "job_type": "food_service"
+        },
+        {
+          "job_type": "tutor"
+        },
+        {
+          "job_type": "retail"
+        },
+        {
+          "job_type": "intern"
+        },
+        {
+          "job_type": "side_biz"
+        }
+      ]
+    }
+  },
+  "random_gokon": {
+    "id": "random_gokon",
+    "title": "合コンに誘われる",
+    "description": "友人から急に誘いが来た。",
+    "year": null,
+    "category": "ランダム",
+    "choices": [
+      {
+        "id": "random_gokon_A",
+        "label": "参加してみる",
+        "effects": {},
+        "dynamicRandomChance": {
+          "formula": "romance_success",
+          "onSuccess": {
+            "romance_exp": 3,
+            "connections": 1
+          },
+          "onFailure": {
+            "romance_exp": 1,
+            "health": -1
+          }
+        },
+        "tone": "romance",
+        "storyTags": [
+          "恋愛"
+        ],
+        "polarity": "mixed"
+      },
+      {
+        "id": "random_gokon_B",
+        "label": "断って休む",
+        "effects": {
+          "health": 2
+        },
+        "polarity": "positive"
+      }
+    ],
+    "weight": 8,
+    "polarity": "mixed"
+  },
+  "random_cheat": {
+    "id": "random_cheat",
+    "title": "危ない誘い",
+    "description": "恋人がいるのに、別の人から距離を詰められる。",
+    "year": null,
+    "category": "ランダム",
+    "choices": [
+      {
+        "id": "random_cheat_A",
+        "label": "乗り気になってしまう",
+        "effects": {},
+        "cheatAction": true,
+        "polarity": "negative"
+      },
+      {
+        "id": "random_cheat_B",
+        "label": "線を引く",
+        "effects": {
+          "romance_exp": 1,
+          "health": 1
+        },
+        "badLuckDelta": -1,
+        "polarity": "positive"
+      }
+    ],
+    "weight": 6,
+    "polarity": "mixed",
+    "condition": {
+      "requiredFlags": {
+        "has_partner": true
+      }
+    }
+  },
+  "random_wedding": {
+    "id": "random_wedding",
+    "title": "友人の結婚式",
+    "description": "少し先の人生を見せられる。",
+    "year": null,
+    "category": "ランダム",
+    "choices": [
+      {
+        "id": "random_wedding_A",
+        "label": "出席する",
+        "effects": {
+          "connections": 2,
+          "romance_exp": 1,
+          "money": -2
+        },
+        "badLuckDelta": -1,
+        "polarity": "positive"
+      }
+    ],
+    "weight": 6,
+    "polarity": "positive",
+    "condition": {
+      "minRound": 25
+    }
+  },
+  "random_award": {
+    "id": "random_award",
+    "title": "小さな表彰",
+    "description": "授業や活動で評価される。",
+    "year": null,
+    "category": "ランダム",
+    "choices": [
+      {
+        "id": "random_award_A",
+        "label": "素直に受け取る",
+        "effects": {
+          "intellect": 1,
+          "connections": 1,
+          "action_power": 1
+        },
+        "badLuckDelta": -1,
+        "polarity": "positive"
+      }
+    ],
+    "weight": 7,
+    "polarity": "positive"
+  },
+  "random_lost_phone": {
+    "id": "random_lost_phone",
+    "title": "スマホ紛失",
+    "description": "連絡手段を失って焦る。",
+    "year": null,
+    "category": "ランダム",
+    "choices": [
+      {
+        "id": "random_lost_phone_A",
+        "label": "探し回る",
+        "effects": {
+          "time": -1,
+          "health": -1,
+          "connections": -1
+        },
+        "badLuckDelta": 1,
+        "polarity": "negative"
+      }
+    ],
+    "weight": 5,
+    "polarity": "negative"
+  }
+}
