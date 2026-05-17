@@ -148,29 +148,33 @@ export interface Player {
 export type Season = "spring" | "summer" | "autumn" | "winter";
 
 export interface RoundInfo {
-  round: number; // 1-16
+  round: number; // 1-48 (1ラウンド = 1ヶ月)
   year: 1 | 2 | 3 | 4;
-  season: Season;
-  label: string; // e.g. "1年 春"
+  season: Season; // kept for type compatibility
+  label: string; // e.g. "1年生 4月"
+  monthIndex: number; // 0-11 within year
 }
 
-const SEASON_ORDER: Season[] = ["spring", "summer", "autumn", "winter"];
-const SEASON_LABELS: Record<Season, string> = {
-  spring: "春",
-  summer: "夏",
-  autumn: "秋",
-  winter: "冬",
-};
+const MONTH_NAMES = ["4月","5月","6月","7月","8月","9月","10月","11月","12月","1月","2月","3月"];
+// Month index → approximate season
+const MONTH_TO_SEASON: Season[] = [
+  "spring","spring","spring",  // 4-6月
+  "summer","summer","summer",  // 7-9月
+  "autumn","autumn","autumn",  // 10-12月
+  "winter","winter","winter",  // 1-3月
+];
 
 export function getRoundInfo(round: number): RoundInfo {
-  const clamped = Math.max(1, Math.min(16, round));
-  const year = (Math.ceil(clamped / 4) as 1 | 2 | 3 | 4);
-  const season = SEASON_ORDER[(clamped - 1) % 4];
+  const clamped = Math.max(1, Math.min(48, round));
+  const year = (Math.ceil(clamped / 12) as 1 | 2 | 3 | 4);
+  const monthIndex = (clamped - 1) % 12;
+  const season = MONTH_TO_SEASON[monthIndex];
   return {
     round: clamped,
     year,
     season,
-    label: `${year}年 ${SEASON_LABELS[season]}`,
+    label: `${year}年生 ${MONTH_NAMES[monthIndex]}`,
+    monthIndex,
   };
 }
 
@@ -186,7 +190,7 @@ export interface LastRoll {
 
 export interface GameState {
   phase: GamePhase;
-  currentRound: number; // 1-16
+  currentRound: number; // 1-48 (1ラウンド = 1ヶ月)
   players: Player[];
   turnIndex: number;
   /** Tracks which players have completed their turn this round */
@@ -251,7 +255,6 @@ export type ServerMessage =
 export type ClientMessage =
   | { type: "join"; name: string; role: Role; clientId?: string }
   | { type: "start_game" }
-  | { type: "player_roll" }
   | { type: "player_choice"; choiceId: string }
   | { type: "request_state" };
 
@@ -303,7 +306,7 @@ export function defaultGameState(): GameState {
 export const RESOURCE_RANGES: Record<ResourceKey, { min: number; max: number }> = {
   time: { min: 0, max: 12 },
   money: { min: -5, max: 99 },
-  credits: { min: 0, max: 130 },
+  credits: { min: 0, max: 160 },
   health: { min: 0, max: 12 },
 };
 
@@ -331,13 +334,15 @@ export function diceToSquares(roll: number): number {
   return roll;
 }
 
-// ─── Credit Checkpoints ───────────────────────────────────────────
+// ─── Credit Checkpoints (warning only, no penalty) ───────────────
 export const CREDIT_CHECKPOINTS: Record<number, number> = {
-  4: 20,  // End of Year 1
-  8: 50,  // End of Year 2
-  12: 80, // End of Year 3
-  16: 110, // Graduation
+  12: 25,  // End of Year 1 — warning if below
+  24: 55,  // End of Year 2 — warning if below
+  36: 90,  // End of Year 3 — warning if below
+  // Month 47: graduation check (handled separately in server)
 };
+
+export const GRADUATION_REQUIRED = 124;
 
 // ─── Player Colors ────────────────────────────────────────────────
 const PLAYER_COLORS = [
