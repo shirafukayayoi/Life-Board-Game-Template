@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "events:check": "node scripts/validate-events.mjs",
+    "simulate": "node scripts/simulate.mjs",
     "start": "node server/index.js",
     "preview": "vite preview"
   },
