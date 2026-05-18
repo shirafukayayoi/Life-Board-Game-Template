@@ -47,6 +47,13 @@ function App() {
     [hostUrls],
   );
 
+  // https:// で始まるURLがあればトンネルモード
+  const tunnelUrl = useMemo(
+    () => hostUrls.find((u) => u.startsWith("https://")),
+    [hostUrls],
+  );
+  const isTunnelMode = Boolean(tunnelUrl);
+
   const controllerEntryUrl = useMemo(() => {
     if (!primaryHostUrl) return "";
     return `${primaryHostUrl}/controller.html?host=${encodeURIComponent(primaryHostUrl)}`;
@@ -316,6 +323,57 @@ function App() {
               ホストとして開始
             </button>
           </div>
+        </section>
+      )}
+
+      {/* ── Connection Guide ──────────────────────────────────────── */}
+      {clientId && (
+        <section className={`panel connection-guide ${isTunnelMode ? "connection-guide--tunnel" : "connection-guide--local"}`}>
+          <div className="connection-guide-header">
+            <span className="connection-guide-badge">
+              {isTunnelMode ? "🌐 Cloudflare Tunnelモード" : "📡 ローカルWiFiモード"}
+            </span>
+            <span className="connection-guide-port">ポート {window.location.port || "80"}</span>
+          </div>
+
+          {isTunnelMode ? (
+            <div className="connection-guide-body">
+              <p className="connection-guide-desc">
+                参加者はどのネットワーク・どの場所からでも接続できます。
+                URLまたはQRコードを共有してください。
+              </p>
+              <div className="connection-guide-url">
+                <span className="connection-guide-url-label">参加者向けURL</span>
+                <code>{tunnelUrl}</code>
+                <button
+                  className="connection-guide-copy"
+                  onClick={() => navigator.clipboard.writeText(controllerEntryUrl)}
+                >
+                  コピー
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="connection-guide-body">
+              <p className="connection-guide-desc">
+                参加者と<strong>同じWiFi</strong>に繋がっている必要があります。
+                会場のAPアイソレーション設定にご注意ください。
+              </p>
+              <details className="connection-guide-tunnel-howto">
+                <summary>別ネットワークからも参加させる方法（Cloudflare Tunnel）</summary>
+                <ol>
+                  <li>このターミナルを閉じて、代わりに以下を実行してください：</li>
+                  <li><code>npm run game:tunnel</code></li>
+                  <li>（2ゲーム目以降）<code>npm run game -- --port 4174 --tunnel --name "Bチーム"</code></li>
+                  <li>表示されたURLを参加者に共有すれば完了です。cloudflaredのインストールは自動で行われます。</li>
+                </ol>
+                <p className="connection-guide-note">
+                  複数ゲームを同時進行する場合は、ゲームごとに別のターミナルで上記コマンドを実行してください。
+                  それぞれ独立したURLが発行されます。
+                </p>
+              </details>
+            </div>
+          )}
         </section>
       )}
 

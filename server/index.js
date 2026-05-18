@@ -32,6 +32,9 @@ import { writeSessionLog } from "./sessionLogger.js";
 const PORT = Number(process.env.PORT ?? 4173);
 const STATIC_DIR = process.env.STATIC_DIR ?? "dist";
 
+// Cloudflare Tunnel などで注入される公開URL（start-game.mjs が POST /admin/tunnel-url で設定）
+let publicTunnelUrl = process.env.PUBLIC_URL ?? null;
+
 const RESOURCE_KEYS = ["time", "money", "credits", "health"];
 const EXPERIENCE_KEYS = ["intellect", "connections", "work_tolerance", "action_power", "romance_exp"];
 
@@ -198,7 +201,18 @@ function getHostUrls() {
       }
     });
   });
+  // トンネルURLが設定されている場合は先頭に追加（ホストUIで優先表示される）
+  if (publicTunnelUrl) urls.add(publicTunnelUrl);
   return Array.from(urls);
+}
+
+function broadcastHostUrls() {
+  const urls = getHostUrls();
+  for (const [socket, client] of sockets.entries()) {
+    if (socket.readyState === socket.OPEN && client.role === "host") {
+      socket.send(JSON.stringify({ type: "welcome", clientId: client.id, hostId, urls }));
+    }
+  }
 }
 
 function broadcast(payload) {
@@ -1624,6 +1638,29 @@ wss.on("connection", (socket) => {
 
     broadcastState();
   });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  Admin Endpoints (localhost only)
+// ═══════════════════════════════════════════════════════════════════
+
+app.use(express.json());
+
+// start-game.mjs がCloudflare TunnelのURLをここにPOSTする
+app.post("/admin/tunnel-url", (req, res) => {
+  const ip = req.socket.remoteAddress ?? "";
+  const isLocal = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+  if (!isLocal) { res.status(403).json({ error: "localhost only" }); return; }
+
+  const { url } = req.body ?? {};
+  if (!url || typeof url !== "string" || !url.startsWith("https://")) {
+    res.status(400).json({ error: "invalid url" }); return;
+  }
+
+  publicTunnelUrl = url;
+  broadcastHostUrls();
+  console.log(`\n🌐 Tunnel URL set: ${url}\n`);
+  res.json({ ok: true, url });
 });
 
 // ═══════════════════════════════════════════════════════════════════
