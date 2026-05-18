@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { generateResultCard } from "../utils/generateCard";
 import { createRoot } from "react-dom/client";
 import {
   Radar,
@@ -614,6 +615,8 @@ export function ControllerPlayPage() {
     useState<ChoiceResult | null>(null);
   const [gameResults, setGameResults] = useState<PlayerResult[] | null>(null);
   const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [cardImageUrl, setCardImageUrl] = useState<string | null>(null);
+  const [cardGenerating, setCardGenerating] = useState(false);
 
   // UI state
   const [confirmChoice, setConfirmChoice] = useState<string | null>(null);
@@ -1214,6 +1217,77 @@ export function ControllerPlayPage() {
             共有
           </button>
         </div>
+
+        {/* Card image generator — only shown for life_map mode */}
+        {myResult.lifeArchetype && (
+          <div style={{ marginTop: 16, textAlign: "center" }}>
+            <button
+              className="share-card__button"
+              type="button"
+              disabled={cardGenerating}
+              style={{ width: "100%", opacity: cardGenerating ? 0.6 : 1 }}
+              onClick={() => {
+                if (!myResult.lifeArchetype) return;
+                setCardGenerating(true);
+                generateResultCard({
+                  playerName: myResult.playerName,
+                  archetypeId: myResult.lifeArchetype.id,
+                  archetypeTitle: myResult.lifeArchetype.title,
+                  archetypeDescription: myResult.lifeArchetype.description,
+                  storyTags: myResult.storyTags ?? [],
+                })
+                  .then((url) => setCardImageUrl(url))
+                  .catch(() => {/* silently ignore */})
+                  .finally(() => setCardGenerating(false));
+              }}
+            >
+              {cardGenerating ? "カード生成中..." : "📸 結果カードを作る"}
+            </button>
+          </div>
+        )}
+
+        {/* Full-screen card preview overlay */}
+        {cardImageUrl && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.85)",
+              zIndex: 9999,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
+            }}
+            onClick={() => setCardImageUrl(null)}
+          >
+            <p style={{ color: "#fff", marginBottom: 12, fontSize: 14 }}>
+              スクリーンショットで保存してください
+            </p>
+            <img
+              src={cardImageUrl}
+              alt="結果カード"
+              style={{ maxWidth: "100%", maxHeight: "80vh", borderRadius: 12 }}
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              type="button"
+              style={{
+                marginTop: 16,
+                padding: "10px 32px",
+                background: "rgba(255,255,255,0.15)",
+                color: "#fff",
+                border: "1px solid rgba(255,255,255,0.3)",
+                borderRadius: 8,
+                fontSize: 14,
+              }}
+              onClick={() => setCardImageUrl(null)}
+            >
+              閉じる
+            </button>
+          </div>
+        )}
       </div>
     );
   };
