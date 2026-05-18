@@ -342,6 +342,7 @@ export interface GameState {
   lifePlayerRoutes?: Record<string, string[]>;
   pendingLifeChoices?: Record<string, string>;
   currentChoiceMode?: "simultaneous" | "sequential";
+  choicePhilosophy?: "equal" | "realistic";
 }
 
 export interface ChoiceResult {
@@ -448,7 +449,7 @@ export type ServerMessage =
 export type ClientMessage =
   | { type: "join"; name: string; role: Role; clientId?: string; passkey?: string; faculty?: Faculty }
   | { type: "start_game" }
-  | { type: "start_life_map_game" }
+  | { type: "start_life_map_game"; philosophy?: "equal" | "realistic" }
   | { type: "reset_game" }
   | { type: "remove_player"; playerId: string }
   | { type: "set_fallback_mode"; enabled: boolean }

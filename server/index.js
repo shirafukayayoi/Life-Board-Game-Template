@@ -161,6 +161,7 @@ function defaultGameState() {
     pendingLifeChoices: {},
     pendingLifeResults: {},
     currentChoiceMode: "sequential",
+    choicePhilosophy: "equal",
   };
 }
 
@@ -906,7 +907,7 @@ function tryAdvanceTimelineEvent(event = getCurrentTimelineEvent()) {
     const selectedId = state.pendingLifeChoices[lifePlayer.id];
     const selectedChoice = event.choices.find((c) => c.id === selectedId);
     if (!selectedChoice) return lifePlayer;
-    return applyTimelineChoice(lifePlayer, event, selectedChoice);
+    return applyTimelineChoice(lifePlayer, event, selectedChoice, state.choicePhilosophy);
   });
 
   state.currentSeasonIndex += 1;
@@ -927,7 +928,7 @@ function advanceAfterReveal() {
     const selectedId = state.pendingLifeChoices[lifePlayer.id];
     const selectedChoice = event.choices.find((c) => c.id === selectedId);
     if (!selectedChoice) return lifePlayer;
-    return applyTimelineChoice(lifePlayer, event, selectedChoice);
+    return applyTimelineChoice(lifePlayer, event, selectedChoice, state.choicePhilosophy);
   });
 
   state.currentSeasonIndex += 1;
@@ -1450,6 +1451,7 @@ wss.on("connection", (socket) => {
         player.flagHistory = [];
         player.choiceHistory = [];
       }
+      state.choicePhilosophy = payload.philosophy ?? "equal";
       state.lifePlayers = state.players.map((player) => createTimelinePlayer(player.id, player.name));
       state.lifeMapSquares = PUBLIC_LIFE_MAP_SQUARES;
       state.lifePlayerPositions = Object.fromEntries(

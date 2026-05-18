@@ -62,6 +62,8 @@ const PLAYERS_PER_RUN = parseInt(getArg("players", "5"), 10);
 const TEMPERATURE     = parseFloat(getArg("temperature", "2.0"));
 const STRATEGY        = getArg("strategy", "persona");
 const PERSONAS_FILE   = getArg("personas-file", null);
+const ACADEMIC_BONUS  = parseInt(getArg("academic-bonus", "0"), 10);
+const PHILOSOPHY      = getArg("philosophy", "equal"); // "equal" | "realistic"
 const VERBOSE         = hasFlag("verbose");
 const AS_JSON         = hasFlag("json");
 
@@ -179,8 +181,12 @@ function runSimulation(runIndex, personas) {
     createTimelinePlayer(`p${i}`, PLAYER_NAMES[(runIndex * n + i) % PLAYER_NAMES.length])
   );
 
+  // Year boundaries: events at index 3, 7, 11 are end of years 1-3; 15 is end of year 4
+  const YEAR_END_INDICES = new Set([3, 7, 11, 15]);
+
   const choiceLog = [];
-  for (const event of TIMELINE_EVENTS) {
+  for (let ei = 0; ei < TIMELINE_EVENTS.length; ei++) {
+    const event = TIMELINE_EVENTS[ei];
     players = players.map((player, pi) => {
       let choice;
       if (STRATEGY === "random") {
@@ -192,8 +198,15 @@ function runSimulation(runIndex, personas) {
       }
       if (!choice) return player;
       choiceLog.push({ eventId: event.id, choiceId: choice.id, choiceLabel: choice.label, playerIndex: pi, personaType: assigned[pi]?.type ?? "?" });
-      return applyTimelineChoice(player, event, choice);
+      return applyTimelineChoice(player, event, choice, PHILOSOPHY);
     });
+    // 学年ボーナス: 学年末イベント処理後にacademicを加算
+    if (ACADEMIC_BONUS > 0 && YEAR_END_INDICES.has(ei)) {
+      players = players.map((p) => ({
+        ...p,
+        traits: { ...p.traits, academic: Math.min(20, (p.traits.academic ?? 0) + ACADEMIC_BONUS) },
+      }));
+    }
   }
   return { results: generateTimelineResults(players), choiceLog, assignedPersonas: assigned };
 }

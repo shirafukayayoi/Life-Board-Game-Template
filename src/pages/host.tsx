@@ -190,13 +190,15 @@ function App() {
     sendMessage({ type: "start_game" });
   };
 
+  const [choicePhilosophy, setChoicePhilosophy] = useState<"equal" | "realistic">("equal");
+
   const startLifeMapGame = () => {
     if (!clientId) return;
     if (state.players.length < 1) {
       setStatus("参加者が必要です");
       return;
     }
-    sendMessage({ type: "start_life_map_game" });
+    sendMessage({ type: "start_life_map_game", philosophy: choicePhilosophy });
   };
 
   const resetGame = () => {
@@ -586,6 +588,34 @@ function App() {
       {/* ── Actions ───────────────────────────────────────────────── */}
       {clientId && !isInGame && (
         <section className="panel">
+          <h2>ゲームの哲学</h2>
+          <p className="philosophy-description">人生マップで使う選択肢の設計思想を選んでください。どちらも「正しい」答えはありません。</p>
+          <div className="philosophy-selector">
+            <button
+              className={`philosophy-card${choicePhilosophy === "equal" ? " selected" : ""}`}
+              onClick={() => setChoicePhilosophy("equal")}
+            >
+              <div className="philosophy-card-title">すべての体験は等しく貴重だ</div>
+              <div className="philosophy-card-creed">
+                設計理念: どんな大学生活も、その人なりの充実がある。サークルに打ち込めば人間関係が豊かに、勉強に集中すれば学業が伸びる——どの道も「正解」。
+              </div>
+              <div className="philosophy-card-effect">
+                ゲームへの影響: 全選択肢の効果合計が自動的に均等化されます。プレイヤーは失敗を恐れず自分の価値観を表現できます。どんな選択も何かを得られます。
+              </div>
+            </button>
+            <button
+              className={`philosophy-card${choicePhilosophy === "realistic" ? " selected" : ""}`}
+              onClick={() => setChoicePhilosophy("realistic")}
+            >
+              <div className="philosophy-card-title">さすがにそれはやめとけ</div>
+              <div className="philosophy-card-creed">
+                設計理念: 大学生活には本当の失敗がある。テストをサボれば単位も時間も失う。すべての選択が等しく意味があるわけではない。
+              </div>
+              <div className="philosophy-card-effect">
+                ゲームへの影響: 選択肢の効果をそのまま反映。一部の選択は複数の面で不利になります。「あの選択は本当にまずかった」という体験ができます。なお単位は一度取ったら減りません。
+              </div>
+            </button>
+          </div>
           <h2>アクション</h2>
           <div className="actions">
             <button
