@@ -1,18 +1,26 @@
 /**
  * Campus Life Game — ゲームバランス検証シミュレーター
  *
+ * 実行のたびに Claude API で新鮮な学生ペルソナを生成し、
+ * ペルソナの価値観に基づいた選択でシミュレーションを行う。
+ *
  * 使い方:
  *   node scripts/simulate.mjs [オプション]
+ *   npm run simulate -- --runs 1000
  *
  * オプション:
  *   --runs    N     シミュレーション回数 (デフォルト: 1000)
  *   --players N     1回あたりのプレイヤー数 (デフォルト: 5)
+ *   --temperature F 選択のぶれ幅。小さいほど価値観に忠実 (デフォルト: 2.0)
  *   --strategy      persona (デフォルト) / random / spread
- *   --temperature F ペルソナの選択ぶれ幅。小さいほど価値観に忠実 (デフォルト: 2.0)
  *   --verbose       各ランの詳細を出力
- *   --json          JSON 形式で出力 (CI等での機械読み取り用)
+ *   --json          JSON 形式で出力
+ *
+ * 環境変数:
+ *   ANTHROPIC_API_KEY  ペルソナ生成に使用。未設定時はフォールバックペルソナを使用。
  */
 
+import Anthropic from "@anthropic-ai/sdk";
 import { TIMELINE_EVENTS } from "../server/timelineEvents.js";
 import {
   createTimelinePlayer,
@@ -23,418 +31,394 @@ import {
 
 // ─── CLI 引数パース ─────────────────────────────────────────────────
 const args = process.argv.slice(2);
-function getArg(name, defaultVal) {
+function getArg(name, def) {
   const idx = args.indexOf(`--${name}`);
-  if (idx === -1) return defaultVal;
-  return args[idx + 1] ?? defaultVal;
+  return idx === -1 ? def : (args[idx + 1] ?? def);
 }
-function hasFlag(name) { return args.includes(`--${name}`); }
+const hasFlag = (name) => args.includes(`--${name}`);
 
-const RUNS        = parseInt(getArg("runs", "1000"), 10);
+const RUNS         = parseInt(getArg("runs", "1000"), 10);
 const PLAYERS_PER_RUN = parseInt(getArg("players", "5"), 10);
-const STRATEGY    = getArg("strategy", "persona");
-const TEMPERATURE = parseFloat(getArg("temperature", "2.0"));
-const VERBOSE     = hasFlag("verbose");
-const AS_JSON     = hasFlag("json");
+const TEMPERATURE  = parseFloat(getArg("temperature", "2.0"));
+const STRATEGY     = getArg("strategy", "persona");
+const VERBOSE      = hasFlag("verbose");
+const AS_JSON      = hasFlag("json");
 
-// ─── ペルソナ定義 ───────────────────────────────────────────────────
-// weights: 各トレイトに対する重み。正 = 欲しい、負 = 避ける
-// 合計を一定にしていないが、相対的な優先度として機能する
+// ─── ペルソナ生成 (Claude API) ─────────────────────────────────────
 
-const PERSONAS = [
+const TRAIT_DESCRIPTIONS = {
+  academic:      "学業・単位への関心",
+  stability:     "規則正しい生活・安定志向",
+  wellbeing:     "体調・精神的健康の重視",
+  relationships: "人間関係・友人の重視",
+  freedom:       "自分のペース・束縛を嫌う",
+  challenge:     "挑戦・新しいことへの積極性",
+  career:        "就職・将来キャリアへの関心",
+  memory:        "思い出・経験の蓄積を重視",
+  selfhood:      "自己表現・アイデンティティの模索",
+};
+
+const PERSONA_GENERATION_PROMPT = `
+あなたは日本の大学生活ゲームのシミュレーター用ペルソナを生成するAIです。
+毎回ユニークで多様な学生キャラクターを作ってください。
+
+${PLAYERS_PER_RUN}人分の学生ペルソナをJSON配列で出力してください。
+以下のフォーマットに厳密に従ってください（コードブロック不要、JSONのみ）:
+
+[
+  {
+    "type": "ペルソナ名（例: 体育会系の熱血学生、図書館に住む研究者タイプ、等）",
+    "description": "この学生の価値観・行動パターンを1〜2文で説明",
+    "weights": {
+      "academic": 整数(-3〜4),
+      "stability": 整数(-3〜4),
+      "wellbeing": 整数(-3〜4),
+      "relationships": 整数(-3〜4),
+      "freedom": 整数(-3〜4),
+      "challenge": 整数(-3〜4),
+      "career": 整数(-3〜4),
+      "memory": 整数(-3〜4),
+      "selfhood": 整数(-3〜4)
+    },
+    "stressThresholds": {
+      "トレイト名": 閾値(1〜4の整数)
+    }
+  }
+]
+
+各トレイトの意味:
+${Object.entries(TRAIT_DESCRIPTIONS).map(([k, v]) => `- ${k}: ${v}`).join("\n")}
+
+制約:
+- weights の値は -3〜4 の整数
+- 各ペルソナは個性的で互いに異なること
+- stressThresholds は最大2つ（特に気にするトレイトのみ）
+- 日本の大学生らしいリアルなキャラクターを作ること
+- 毎回新しい組み合わせで。ステレオタイプだけでなく意外なキャラも入れてよい
+`.trim();
+
+async function generatePersonasWithClaude() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return null; // フォールバックへ
+  }
+
+  const client = new Anthropic({ apiKey });
+
+  try {
+    const message = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: PERSONA_GENERATION_PROMPT }],
+    });
+
+    const text = message.content[0]?.type === "text" ? message.content[0].text : "";
+    // JSONブロックを抽出（マークダウンで囲まれた場合も対応）
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error("JSON配列が見つかりません");
+
+    const personas = JSON.parse(jsonMatch[0]);
+
+    // 型バリデーション
+    for (const p of personas) {
+      if (!p.type || !p.weights) throw new Error(`不正なペルソナ: ${JSON.stringify(p)}`);
+      for (const key of LIFE_TRAIT_KEYS) {
+        if (p.weights[key] === undefined) p.weights[key] = 0;
+        p.weights[key] = Math.max(-3, Math.min(4, Math.round(p.weights[key])));
+      }
+      p.stressThresholds = p.stressThresholds ?? {};
+    }
+
+    return personas;
+  } catch (err) {
+    process.stderr.write(`⚠️  ペルソナ生成失敗 (フォールバック使用): ${err.message}\n`);
+    return null;
+  }
+}
+
+// ─── フォールバックペルソナ (API不使用時) ─────────────────────────
+
+const FALLBACK_PERSONAS = [
   {
     type: "真面目な優等生",
     description: "単位と将来を最優先。安定した生活を好む。",
-    weights: {
-      academic: 4, stability: 2, wellbeing: 1,
-      relationships: 0, freedom: -1, challenge: 0,
-      career: 2, memory: 0, selfhood: 1,
-    },
-    // 体力・安定が極端に下がったら警戒する
+    weights: { academic: 4, stability: 2, wellbeing: 1, relationships: 0, freedom: -1, challenge: 0, career: 2, memory: 0, selfhood: 1 },
     stressThresholds: { wellbeing: 3, stability: 2 },
   },
   {
     type: "社交的なムードメーカー",
     description: "友達と思い出を作ることが大事。ノリを大切にする。",
-    weights: {
-      academic: 0, stability: -1, wellbeing: 1,
-      relationships: 4, freedom: 1, challenge: 1,
-      career: 0, memory: 3, selfhood: 0,
-    },
+    weights: { academic: 0, stability: -1, wellbeing: 1, relationships: 4, freedom: 1, challenge: 1, career: 0, memory: 3, selfhood: 0 },
     stressThresholds: { wellbeing: 2, academic: 3 },
   },
   {
     type: "自由な一匹狼",
     description: "自分のペースで生きたい。縛られることを嫌う。",
-    weights: {
-      academic: -1, stability: -2, wellbeing: 1,
-      relationships: -1, freedom: 4, challenge: 1,
-      career: 0, memory: 1, selfhood: 4,
-    },
+    weights: { academic: -1, stability: -2, wellbeing: 1, relationships: -1, freedom: 4, challenge: 1, career: 0, memory: 1, selfhood: 4 },
     stressThresholds: { wellbeing: 2, academic: 2 },
   },
   {
     type: "就活ガチ勢",
     description: "将来のキャリアに全集中。インターンや資格を積極的に取る。",
-    weights: {
-      academic: 2, stability: 1, wellbeing: -1,
-      relationships: 1, freedom: -1, challenge: 3,
-      career: 4, memory: 0, selfhood: 0,
-    },
+    weights: { academic: 2, stability: 1, wellbeing: -1, relationships: 1, freedom: -1, challenge: 3, career: 4, memory: 0, selfhood: 0 },
     stressThresholds: { wellbeing: 1, academic: 3 },
   },
   {
     type: "自分探し中の放浪者",
-    description: "何をしたいかわからないが、挑戦し続ける。安定より変化を求める。",
-    weights: {
-      academic: 0, stability: -2, wellbeing: 0,
-      relationships: 1, freedom: 3, challenge: 3,
-      career: 0, memory: 1, selfhood: 4,
-    },
+    description: "何をしたいかわからないが、挑戦し続ける。",
+    weights: { academic: 0, stability: -2, wellbeing: 0, relationships: 1, freedom: 3, challenge: 3, career: 0, memory: 1, selfhood: 4 },
     stressThresholds: { wellbeing: 2, academic: 2 },
   },
   {
     type: "コミュ力お化け",
     description: "人脈と挑戦を重視。無茶も厭わないタイプ。",
-    weights: {
-      academic: 0, stability: -1, wellbeing: -1,
-      relationships: 4, freedom: 0, challenge: 3,
-      career: 1, memory: 3, selfhood: 0,
-    },
+    weights: { academic: 0, stability: -1, wellbeing: -1, relationships: 4, freedom: 0, challenge: 3, career: 1, memory: 3, selfhood: 0 },
     stressThresholds: { wellbeing: 1, academic: 3 },
   },
   {
     type: "ほどほど生活者",
-    description: "特に尖らず、バランスよく大学生活を送る。大きな失敗も成功もしない。",
-    weights: {
-      academic: 1, stability: 2, wellbeing: 2,
-      relationships: 1, freedom: 1, challenge: 1,
-      career: 1, memory: 1, selfhood: 1,
-    },
+    description: "特に尖らず、バランスよく大学生活を送る。",
+    weights: { academic: 1, stability: 2, wellbeing: 2, relationships: 1, freedom: 1, challenge: 1, career: 1, memory: 1, selfhood: 1 },
     stressThresholds: { wellbeing: 3, stability: 3 },
   },
 ];
 
-// ─── ペルソナベースの選択ロジック ─────────────────────────────────
+// ─── 選択ロジック ────────────────────────────────────────────────────
 
-/**
- * ソフトマックス: スコア → 確率分布
- * temperature が高いほどランダム寄り、低いほど価値観に忠実
- */
 function softmax(scores, temperature) {
-  const maxScore = Math.max(...scores);
-  const exps = scores.map((s) => Math.exp((s - maxScore) / temperature));
+  const max = Math.max(...scores);
+  const exps = scores.map((s) => Math.exp((s - max) / temperature));
   const total = exps.reduce((a, b) => a + b, 0);
   return exps.map((e) => e / total);
 }
 
-/**
- * ストレス補正: 特定のトレイトが低いとき、それを回復する選択肢にボーナスを加える
- */
 function stressBonus(choice, player, persona) {
   let bonus = 0;
-  const traits = player.traits;
-  const thresholds = persona.stressThresholds ?? {};
   const effects = choice.effects ?? {};
-  for (const [trait, threshold] of Object.entries(thresholds)) {
-    if ((traits[trait] ?? 6) <= threshold) {
-      // このトレイトが危険水域 → 回復する選択にボーナス
+  for (const [trait, threshold] of Object.entries(persona.stressThresholds ?? {})) {
+    if ((player.traits[trait] ?? 6) <= threshold) {
       bonus += (effects[trait] ?? 0) * 2;
     }
   }
   return bonus;
 }
 
-function pickChoiceByPersona(event, player, persona, temperature) {
+function pickChoiceByPersona(event, player, persona) {
   const choices = event.choices;
-  if (choices.length === 0) return null;
+  if (!choices.length) return null;
 
   const scores = choices.map((choice) => {
     const effects = choice.effects ?? {};
-    let score = 0;
-    for (const trait of LIFE_TRAIT_KEYS) {
-      score += (persona.weights[trait] ?? 0) * (effects[trait] ?? 0);
-    }
-    // ストレス補正（危機的な状態なら多少価値観から外れた行動もする）
+    let score = LIFE_TRAIT_KEYS.reduce((s, k) => s + (persona.weights[k] ?? 0) * (effects[k] ?? 0), 0);
     score += stressBonus(choice, player, persona);
     return score;
   });
 
-  const probs = softmax(scores, temperature);
+  const probs = softmax(scores, TEMPERATURE);
   let rand = Math.random();
   for (let i = 0; i < choices.length; i++) {
     rand -= probs[i];
     if (rand <= 0) return choices[i];
   }
-  return choices[choices.length - 1];
-}
-
-// ─── その他の選択戦略 ────────────────────────────────────────────────
-
-function pickChoiceRandom(event) {
-  const choices = event.choices;
-  return choices[Math.floor(Math.random() * choices.length)] ?? null;
-}
-
-function pickChoiceSpread(event, playerIndex) {
-  const choices = event.choices;
-  return choices[playerIndex % choices.length] ?? null;
+  return choices.at(-1);
 }
 
 // ─── 1回のシミュレーション ──────────────────────────────────────────
 
-const PLAYER_NAMES = [
-  "Aoi", "Riku", "Hana", "Sora", "Kai",
-  "Mio", "Ren", "Yuki", "Hiro", "Nana",
-  "Tomo", "Shun", "Emi", "Kenji", "Sakura",
-];
+const PLAYER_NAMES = ["Aoi", "Riku", "Hana", "Sora", "Kai", "Mio", "Ren", "Yuki", "Hiro", "Nana", "Tomo", "Shun", "Emi", "Kenji", "Sakura"];
 
-function runSimulation(runIndex) {
-  const numPlayers = Math.min(PLAYERS_PER_RUN, PLAYER_NAMES.length);
+function runSimulation(runIndex, personas) {
+  const n = Math.min(PLAYERS_PER_RUN, PLAYER_NAMES.length);
+  const shuffled = [...personas].sort(() => Math.random() - 0.5);
+  const assigned = Array.from({ length: n }, (_, i) => shuffled[i % shuffled.length]);
 
-  // ペルソナをランダム割り当て（重複なし、足りなければ再利用）
-  const shuffledPersonas = [...PERSONAS].sort(() => Math.random() - 0.5);
-  const assignedPersonas = Array.from({ length: numPlayers }, (_, i) =>
-    shuffledPersonas[i % shuffledPersonas.length]
-  );
-
-  let players = Array.from({ length: numPlayers }, (_, i) =>
-    createTimelinePlayer(`p${i}`, PLAYER_NAMES[(runIndex * numPlayers + i) % PLAYER_NAMES.length])
+  let players = Array.from({ length: n }, (_, i) =>
+    createTimelinePlayer(`p${i}`, PLAYER_NAMES[(runIndex * n + i) % PLAYER_NAMES.length])
   );
 
   const choiceLog = [];
 
   for (const event of TIMELINE_EVENTS) {
-    players = players.map((player, playerIndex) => {
+    players = players.map((player, pi) => {
       let choice;
       if (STRATEGY === "random") {
-        choice = pickChoiceRandom(event);
+        choice = event.choices[Math.floor(Math.random() * event.choices.length)];
       } else if (STRATEGY === "spread") {
-        choice = pickChoiceSpread(event, playerIndex);
+        choice = event.choices[pi % event.choices.length];
       } else {
-        // persona (default)
-        choice = pickChoiceByPersona(event, player, assignedPersonas[playerIndex], TEMPERATURE);
+        choice = pickChoiceByPersona(event, player, assigned[pi]);
       }
       if (!choice) return player;
-      choiceLog.push({
-        eventId: event.id,
-        choiceId: choice.id,
-        choiceLabel: choice.label,
-        playerIndex,
-        personaType: assignedPersonas[playerIndex]?.type ?? "random",
-      });
+      choiceLog.push({ eventId: event.id, choiceId: choice.id, choiceLabel: choice.label, playerIndex: pi, personaType: assigned[pi]?.type ?? "?" });
       return applyTimelineChoice(player, event, choice);
     });
   }
 
-  const results = generateTimelineResults(players);
-  return { results, choiceLog, assignedPersonas };
+  return { results: generateTimelineResults(players), choiceLog, assignedPersonas: assigned };
 }
 
 // ─── 統計ヘルパー ────────────────────────────────────────────────────
 
-function mean(arr) {
-  return arr.length === 0 ? 0 : arr.reduce((a, b) => a + b, 0) / arr.length;
-}
-function stddev(arr) {
-  const m = mean(arr);
-  return Math.sqrt(mean(arr.map((x) => (x - m) ** 2)));
-}
-function percentile(arr, p) {
-  const sorted = [...arr].sort((a, b) => a - b);
-  return sorted[Math.floor((p / 100) * (sorted.length - 1))] ?? 0;
-}
+const mean = (a) => a.length === 0 ? 0 : a.reduce((s, v) => s + v, 0) / a.length;
+const stddev = (a) => { const m = mean(a); return Math.sqrt(mean(a.map((x) => (x - m) ** 2))); };
+const pct = (v, t) => ((v / t) * 100).toFixed(1);
+const percentile = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor((p / 100) * (s.length - 1))] ?? 0; };
 function shannonEntropy(counts) {
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  if (total === 0) return 0;
-  return -Object.values(counts)
-    .filter((c) => c > 0)
-    .reduce((sum, c) => sum + (c / total) * Math.log2(c / total), 0);
+  const t = Object.values(counts).reduce((a, b) => a + b, 0);
+  if (!t) return 0;
+  return -Object.values(counts).filter((c) => c > 0).reduce((s, c) => s + (c / t) * Math.log2(c / t), 0);
 }
-function maxEntropy(n) { return n > 1 ? Math.log2(n) : 0; }
+const maxEntropy = (n) => (n > 1 ? Math.log2(n) : 0);
 
-// ─── choiceMode 事前検証 ──────────────────────────────────────────
+// ─── choiceMode 検証 ─────────────────────────────────────────────────
 
 function verifyChoiceModes() {
   const issues = [];
-  for (const event of TIMELINE_EVENTS) {
-    if (event.choiceMode !== undefined &&
-        event.choiceMode !== "simultaneous" &&
-        event.choiceMode !== "sequential") {
-      issues.push(`Event ${event.id}: 不明な choiceMode "${event.choiceMode}"`);
-    }
-    if (event.choices.length === 0) {
-      issues.push(`Event ${event.id}: 選択肢なし`);
-    }
+  const count = { simultaneous: 0, sequential: 0, unset: 0 };
+  for (const e of TIMELINE_EVENTS) {
+    if (e.choiceMode !== undefined && e.choiceMode !== "simultaneous" && e.choiceMode !== "sequential")
+      issues.push(`${e.id}: 不明な choiceMode "${e.choiceMode}"`);
+    if (!e.choices.length) issues.push(`${e.id}: 選択肢なし`);
+    if (e.choiceMode === "simultaneous") count.simultaneous++;
+    else if (e.choiceMode === "sequential") count.sequential++;
+    else count.unset++;
   }
-  const modeCount = { simultaneous: 0, sequential: 0, unset: 0 };
-  for (const event of TIMELINE_EVENTS) {
-    if (event.choiceMode === "simultaneous") modeCount.simultaneous++;
-    else if (event.choiceMode === "sequential") modeCount.sequential++;
-    else modeCount.unset++;
-  }
-  return { issues, modeCount };
+  return { issues, count };
 }
 
 // ─── メイン ──────────────────────────────────────────────────────────
 
 async function main() {
-  const startTime = Date.now();
-  const { issues: modeIssues, modeCount } = verifyChoiceModes();
+  const t0 = Date.now();
+  const { issues: modeIssues, count: modeCount } = verifyChoiceModes();
+
+  // ペルソナ生成
+  let personas = null;
+  let personaSource = "fallback";
+  if (STRATEGY === "persona") {
+    if (!AS_JSON) process.stderr.write("🎭 ペルソナを生成中...\n");
+    personas = await generatePersonasWithClaude();
+    if (personas) {
+      personaSource = "claude-api";
+      if (!AS_JSON) {
+        process.stderr.write(`✅ ${personas.length}人のペルソナを生成しました:\n`);
+        for (const p of personas) process.stderr.write(`   • ${p.type}: ${p.description}\n`);
+        process.stderr.write("\n");
+      }
+    } else {
+      personas = FALLBACK_PERSONAS;
+      if (!AS_JSON) process.stderr.write("↩️  フォールバックペルソナを使用\n\n");
+    }
+  } else {
+    personas = FALLBACK_PERSONAS;
+  }
 
   // 集計バッファ
-  const academicCounts   = {};
-  const archetypeCounts  = {};
-  const storyAwardCounts = {};
-  const traitSamples     = Object.fromEntries(LIFE_TRAIT_KEYS.map((k) => [k, []]));
-  const storyTagCounts   = {};
-  const choiceCounts     = {};
-  const storyTagsPerPlayer = [];
-  const uniqueArchetypesPerRun = [];
-
-  // ペルソナ別の結果追跡
-  const personaStats = Object.fromEntries(
-    PERSONAS.map((p) => [p.type, { academic: {}, archetype: {}, traitSamples: Object.fromEntries(LIFE_TRAIT_KEYS.map((k) => [k, []])), count: 0 }])
+  const academicCounts  = {};
+  const archetypeCounts = {};
+  const awardCounts     = {};
+  const traitSamples    = Object.fromEntries(LIFE_TRAIT_KEYS.map((k) => [k, []]));
+  const tagCounts       = {};
+  const choiceCounts    = {};
+  const tagsPerPlayer   = [];
+  const uniqueArcPerRun = [];
+  const personaStats    = Object.fromEntries(
+    (personas ?? []).map((p) => [p.type, { academic: {}, archetype: {}, traits: Object.fromEntries(LIFE_TRAIT_KEYS.map((k) => [k, []])), n: 0 }])
   );
 
-  for (const event of TIMELINE_EVENTS) {
-    choiceCounts[event.id] = {};
-    for (const choice of event.choices) {
-      choiceCounts[event.id][choice.id] = { count: 0, label: choice.label };
-    }
+  for (const ev of TIMELINE_EVENTS) {
+    choiceCounts[ev.id] = Object.fromEntries(ev.choices.map((c) => [c.id, { count: 0, label: c.label }]));
   }
 
   let totalPlayers = 0;
 
   for (let i = 0; i < RUNS; i++) {
-    const { results, choiceLog, assignedPersonas } = runSimulation(i);
+    const { results, choiceLog, assignedPersonas } = runSimulation(i, personas);
 
     for (const log of choiceLog) {
-      if (choiceCounts[log.eventId]?.[log.choiceId]) {
-        choiceCounts[log.eventId][log.choiceId].count++;
-      }
+      if (choiceCounts[log.eventId]?.[log.choiceId]) choiceCounts[log.eventId][log.choiceId].count++;
     }
 
-    const archetypesThisRun = new Set();
-
+    const arcSet = new Set();
     for (let pi = 0; pi < results.length; pi++) {
-      const result = results[pi];
+      const r = results[pi];
       const persona = assignedPersonas[pi];
       totalPlayers++;
 
-      const academicKey  = result.academicStatus?.title ?? "不明";
-      const archetypeKey = result.lifeArchetype?.title  ?? "不明";
-      const awardKey     = result.storyAward?.title     ?? "なし";
+      const ak = r.academicStatus?.title ?? "不明";
+      const ek = r.lifeArchetype?.title  ?? "不明";
+      const wk = r.storyAward?.title     ?? "なし";
+      academicCounts[ak]  = (academicCounts[ak]  ?? 0) + 1;
+      archetypeCounts[ek] = (archetypeCounts[ek] ?? 0) + 1;
+      awardCounts[wk]     = (awardCounts[wk]     ?? 0) + 1;
+      arcSet.add(ek);
 
-      academicCounts[academicKey]   = (academicCounts[academicKey]   ?? 0) + 1;
-      archetypeCounts[archetypeKey] = (archetypeCounts[archetypeKey] ?? 0) + 1;
-      storyAwardCounts[awardKey]    = (storyAwardCounts[awardKey]    ?? 0) + 1;
-      archetypesThisRun.add(archetypeKey);
+      for (const k of LIFE_TRAIT_KEYS) traitSamples[k].push(r.traits[k] ?? 0);
+      for (const tag of r.storyTags ?? []) tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
+      tagsPerPlayer.push(r.storyTags?.length ?? 0);
 
-      for (const key of LIFE_TRAIT_KEYS) {
-        traitSamples[key].push(result.traits[key] ?? 0);
-      }
-      for (const tag of result.storyTags ?? []) {
-        storyTagCounts[tag] = (storyTagCounts[tag] ?? 0) + 1;
-      }
-      storyTagsPerPlayer.push(result.storyTags?.length ?? 0);
-
-      // ペルソナ別集計
-      if (persona) {
+      if (persona && personaStats[persona.type]) {
         const ps = personaStats[persona.type];
-        if (ps) {
-          ps.count++;
-          ps.academic[academicKey] = (ps.academic[academicKey] ?? 0) + 1;
-          ps.archetype[archetypeKey] = (ps.archetype[archetypeKey] ?? 0) + 1;
-          for (const key of LIFE_TRAIT_KEYS) {
-            ps.traitSamples[key].push(result.traits[key] ?? 0);
-          }
-        }
+        ps.n++;
+        ps.academic[ak]  = (ps.academic[ak]  ?? 0) + 1;
+        ps.archetype[ek] = (ps.archetype[ek] ?? 0) + 1;
+        for (const k of LIFE_TRAIT_KEYS) ps.traits[k].push(r.traits[k] ?? 0);
       }
 
       if (VERBOSE && i < 2) {
-        const personaLabel = persona?.type ?? "random";
-        console.error(`[run ${i + 1}] ${result.playerName} (${personaLabel}): ${archetypeKey} / ${academicKey}`);
+        process.stderr.write(`[run ${i+1}] ${r.playerName} (${persona?.type}): ${ek} / ${ak}\n`);
       }
     }
-
-    uniqueArchetypesPerRun.push(archetypesThisRun.size);
+    uniqueArcPerRun.push(arcSet.size);
   }
 
-  const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
 
-  // ─── JSON 出力 ─────────────────────────────────────────────────
+  // ─── JSON 出力 ──────────────────────────────────────────────────
   if (AS_JSON) {
-    const output = {
-      meta: { runs: RUNS, playersPerRun: PLAYERS_PER_RUN, strategy: STRATEGY, temperature: TEMPERATURE, totalPlayers, elapsedSec: parseFloat(elapsed) },
-      choiceModeVerification: { issues: modeIssues, modeCount },
-      academicResults: Object.fromEntries(
-        Object.entries(academicCounts).map(([k, v]) => [k, { count: v, pct: ((v / totalPlayers) * 100).toFixed(1) }])
-      ),
-      archetypeDistribution: Object.fromEntries(
-        Object.entries(archetypeCounts).sort(([, a], [, b]) => b - a).map(([k, v]) => [k, { count: v, pct: ((v / totalPlayers) * 100).toFixed(1) }])
-      ),
-      traitStats: Object.fromEntries(
-        LIFE_TRAIT_KEYS.map((k) => [k, {
-          mean: mean(traitSamples[k]).toFixed(2),
-          stddev: stddev(traitSamples[k]).toFixed(2),
-          min: Math.min(...traitSamples[k]),
-          max: Math.max(...traitSamples[k]),
-          p10: percentile(traitSamples[k], 10),
-          p90: percentile(traitSamples[k], 90),
-        }])
-      ),
-      personaResults: Object.fromEntries(
-        Object.entries(personaStats).map(([type, ps]) => [type, {
-          count: ps.count,
-          academicDistribution: Object.fromEntries(
-            Object.entries(ps.academic).map(([k, v]) => [k, { count: v, pct: ((v / ps.count) * 100).toFixed(1) }])
-          ),
-          archetypeDistribution: Object.fromEntries(
-            Object.entries(ps.archetype).map(([k, v]) => [k, { count: v, pct: ((v / ps.count) * 100).toFixed(1) }])
-          ),
-          traitMeans: Object.fromEntries(
-            LIFE_TRAIT_KEYS.map((k) => [k, mean(ps.traitSamples[k]).toFixed(2)])
-          ),
-        }])
-      ),
+    console.log(JSON.stringify({
+      meta: { runs: RUNS, playersPerRun: PLAYERS_PER_RUN, strategy: STRATEGY, temperature: TEMPERATURE, personaSource, totalPlayers, elapsedSec: parseFloat(elapsed) },
+      personas: personas?.map((p) => ({ type: p.type, description: p.description, weights: p.weights })),
+      choiceModeVerification: { issues: modeIssues, count: modeCount },
+      academicResults: Object.fromEntries(Object.entries(academicCounts).map(([k, v]) => [k, { count: v, pct: pct(v, totalPlayers) }])),
+      archetypeDistribution: Object.fromEntries(Object.entries(archetypeCounts).sort(([,a],[,b])=>b-a).map(([k,v]) => [k, { count: v, pct: pct(v, totalPlayers) }])),
+      traitStats: Object.fromEntries(LIFE_TRAIT_KEYS.map((k) => [k, { mean: mean(traitSamples[k]).toFixed(2), stddev: stddev(traitSamples[k]).toFixed(2), min: Math.min(...traitSamples[k]), max: Math.max(...traitSamples[k]), p10: percentile(traitSamples[k], 10), p90: percentile(traitSamples[k], 90) }])),
+      personaResults: Object.fromEntries(Object.entries(personaStats).map(([type, ps]) => [type, { count: ps.n, topAcademic: Object.entries(ps.academic).sort(([,a],[,b])=>b-a)[0]?.[0], topArchetype: Object.entries(ps.archetype).sort(([,a],[,b])=>b-a)[0]?.[0], traitMeans: Object.fromEntries(LIFE_TRAIT_KEYS.map((k) => [k, mean(ps.traits[k]).toFixed(2)])) }])),
       choiceCoverage: choiceCounts,
-      diversity: {
-        archetypeEntropy: shannonEntropy(archetypeCounts).toFixed(3),
-        archetypeMaxEntropy: maxEntropy(Object.keys(archetypeCounts).length).toFixed(3),
-        avgStoryTagsPerPlayer: mean(storyTagsPerPlayer).toFixed(2),
-        avgUniqueArchetypesPerRun: mean(uniqueArchetypesPerRun).toFixed(2),
-      },
-    };
-    console.log(JSON.stringify(output, null, 2));
+      diversity: { archetypeEntropy: shannonEntropy(archetypeCounts).toFixed(3), archetypeMaxEntropy: maxEntropy(Object.keys(archetypeCounts).length).toFixed(3), avgTagsPerPlayer: mean(tagsPerPlayer).toFixed(2), avgUniqueArcPerRun: mean(uniqueArcPerRun).toFixed(2) },
+    }, null, 2));
     return;
   }
 
-  // ─── 人間向け出力 ───────────────────────────────────────────────
+  // ─── 人間向け出力 ────────────────────────────────────────────────
   const HR = "─".repeat(58);
-
   console.log(`\n${"═".repeat(58)}`);
   console.log("  Campus Life Game シミュレーション結果");
   console.log(`${"═".repeat(58)}`);
-  console.log(`  実行: ${RUNS.toLocaleString()}回  |  ${PLAYERS_PER_RUN}人/回  |  戦略: ${STRATEGY}  |  temperature: ${TEMPERATURE}`);
-  console.log(`  総プレイヤー: ${totalPlayers.toLocaleString()}  |  処理時間: ${elapsed}s`);
+  console.log(`  実行: ${RUNS.toLocaleString()}回  |  ${PLAYERS_PER_RUN}人/回  |  strategy: ${STRATEGY}  |  temp: ${TEMPERATURE}`);
+  console.log(`  ペルソナ生成: ${personaSource}  |  総プレイヤー: ${totalPlayers.toLocaleString()}  |  ${elapsed}s`);
   console.log();
+
+  // 生成されたペルソナ一覧
+  if (personas && STRATEGY === "persona") {
+    console.log("【今回使用したペルソナ】");
+    for (const p of personas) {
+      console.log(`  ${p.type}`);
+      console.log(`    ${p.description}`);
+    }
+    console.log();
+  }
 
   // choiceMode 検証
   console.log("【choiceMode 検証】");
   console.log(`  simultaneous: ${modeCount.simultaneous}  sequential: ${modeCount.sequential}  未設定: ${modeCount.unset}`);
-  if (modeIssues.length === 0) {
-    console.log("  ✅ 問題なし");
-  } else {
-    for (const issue of modeIssues) console.log(`  ⚠️  ${issue}`);
-  }
+  console.log(modeIssues.length === 0 ? "  ✅ 問題なし" : modeIssues.map((i) => `  ⚠️  ${i}`).join("\n"));
   console.log();
 
   // 学業結果
   console.log("【学業結果】");
-  for (const [label, count] of Object.entries(academicCounts).sort(([, a], [, b]) => b - a)) {
-    const pct = ((count / totalPlayers) * 100).toFixed(1);
-    console.log(`  ${label.padEnd(22)} ${pct.padStart(5)}%  ${"█".repeat(Math.round(parseFloat(pct) / 2))}`);
+  for (const [label, count] of Object.entries(academicCounts).sort(([,a],[,b])=>b-a)) {
+    console.log(`  ${label.padEnd(22)} ${pct(count, totalPlayers).padStart(5)}%  ${"█".repeat(Math.round(parseFloat(pct(count, totalPlayers)) / 2))}`);
   }
   console.log();
 
@@ -442,88 +426,62 @@ async function main() {
   const arcEnt = shannonEntropy(archetypeCounts);
   const arcMax = maxEntropy(Object.keys(archetypeCounts).length);
   const arcBal = arcMax > 0 ? (arcEnt / arcMax * 100).toFixed(0) : "N/A";
-  console.log(`【人生アーキタイプ分布】  均等度: ${arcBal}%  (エントロピー: ${arcEnt.toFixed(2)} / 最大: ${arcMax.toFixed(2)})`);
-  for (const [label, count] of Object.entries(archetypeCounts).sort(([, a], [, b]) => b - a)) {
-    const pct = ((count / totalPlayers) * 100).toFixed(1);
-    console.log(`  ${label.padEnd(24)} ${pct.padStart(5)}%  ${"█".repeat(Math.round(parseFloat(pct) / 2))}`);
+  console.log(`【人生アーキタイプ分布】  均等度: ${arcBal}%`);
+  for (const [label, count] of Object.entries(archetypeCounts).sort(([,a],[,b])=>b-a)) {
+    console.log(`  ${label.padEnd(24)} ${pct(count, totalPlayers).padStart(5)}%  ${"█".repeat(Math.round(parseFloat(pct(count, totalPlayers)) / 2))}`);
   }
-  console.log(`  平均アーキタイプ種類数/ラン: ${mean(uniqueArchetypesPerRun).toFixed(1)} / ${PLAYERS_PER_RUN}人`);
+  console.log(`  平均アーキタイプ種類数/ラン: ${mean(uniqueArcPerRun).toFixed(1)} / ${PLAYERS_PER_RUN}人`);
   console.log();
 
-  // ペルソナ別結果
+  // ペルソナ別サマリー
   console.log("【ペルソナ別 結果サマリー】");
   console.log(`  ${HR}`);
   for (const [type, ps] of Object.entries(personaStats)) {
-    if (ps.count === 0) continue;
-    const topAcademic  = Object.entries(ps.academic).sort(([, a], [, b]) => b - a)[0];
-    const topArchetype = Object.entries(ps.archetype).sort(([, a], [, b]) => b - a)[0];
-    const topAcademicPct  = topAcademic  ? ((topAcademic[1]  / ps.count) * 100).toFixed(0) : "?";
-    const topArchetypePct = topArchetype ? ((topArchetype[1] / ps.count) * 100).toFixed(0) : "?";
-    const avgAcademic = mean(ps.traitSamples.academic).toFixed(1);
+    if (!ps.n) continue;
+    const topAc = Object.entries(ps.academic).sort(([,a],[,b])=>b-a)[0];
+    const topAr = Object.entries(ps.archetype).sort(([,a],[,b])=>b-a)[0];
     console.log(`  ${type}`);
-    console.log(`    学業: ${topAcademic?.[0] ?? "?"} ${topAcademicPct}%  /  archetype: ${topArchetype?.[0] ?? "?"} ${topArchetypePct}%  /  academic trait 平均: ${avgAcademic}`);
+    console.log(`    → ${topAc?.[0] ?? "?"} ${topAc ? pct(topAc[1], ps.n) : "?"}%  |  ${topAr?.[0] ?? "?"}  |  academic 平均: ${mean(ps.traits.academic).toFixed(1)}`);
   }
   console.log();
 
-  // トレイト最終値
+  // トレイト統計
   console.log("【トレイト最終値統計】");
-  console.log(`  ${"トレイト".padEnd(14)} ${"平均".padStart(5)}  ${"±".padStart(1)}${"SD".padStart(4)}  ${"最小".padStart(4)}  ${"最大".padStart(4)}  P10-P90`);
+  console.log(`  ${"トレイト".padEnd(14)} ${"平均".padStart(5)}  ±SD   min  max  P10-P90`);
   console.log(`  ${HR}`);
-  for (const key of LIFE_TRAIT_KEYS) {
-    const s = traitSamples[key];
+  for (const k of LIFE_TRAIT_KEYS) {
+    const s = traitSamples[k];
     const m = mean(s).toFixed(1);
-    const sd = stddev(s).toFixed(1);
-    const mn = Math.min(...s);
-    const mx = Math.max(...s);
-    const p10 = percentile(s, 10);
-    const p90 = percentile(s, 90);
-    // 平均が低すぎ or 高すぎる場合に警告
-    const meanF = parseFloat(m);
-    const flag = meanF <= 3 ? " 🔴低" : meanF >= 17 ? " 🟡高" : "";
-    console.log(`  ${key.padEnd(14)} ${m.padStart(5)}  ±${sd.padStart(4)}  ${String(mn).padStart(4)}  ${String(mx).padStart(4)}  ${p10}–${p90}${flag}`);
+    const flag = parseFloat(m) <= 3 ? " 🔴低" : parseFloat(m) >= 17 ? " 🟡高" : "";
+    console.log(`  ${k.padEnd(14)} ${m.padStart(5)}  ±${stddev(s).toFixed(1).padEnd(4)}  ${String(Math.min(...s)).padStart(3)}  ${String(Math.max(...s)).padStart(3)}  ${percentile(s,10)}–${percentile(s,90)}${flag}`);
   }
   console.log();
 
-  // 選択肢使用率 (偏りチェック)
+  // 選択肢使用率
   console.log("【選択肢使用率 (偏りチェック)】");
   let biasFound = false;
-  for (const event of TIMELINE_EVENTS) {
-    const ec = choiceCounts[event.id];
+  for (const ev of TIMELINE_EVENTS) {
+    const ec = choiceCounts[ev.id];
     const total = Object.values(ec).reduce((a, { count }) => a + count, 0);
-    if (total === 0) continue;
+    if (!total) continue;
     const pcts = Object.values(ec).map(({ count }) => (count / total) * 100);
-    const maxP = Math.max(...pcts);
-    const minP = Math.min(...pcts);
-    const isBiased = maxP - minP > 25;
+    const isBiased = Math.max(...pcts) - Math.min(...pcts) > 25;
     if (isBiased) biasFound = true;
-    const modeLabel = event.choiceMode === "simultaneous" ? "一斉" : event.choiceMode === "sequential" ? "個別" : "未設定";
-    const biasFlag = isBiased ? " ⚠️ 偏り" : "";
-    console.log(`  ${event.label ?? event.id} [${modeLabel}]${biasFlag}`);
-    for (const [, { label, count }] of Object.entries(ec)) {
-      const pct = ((count / total) * 100).toFixed(1);
-      const bar = "▪".repeat(Math.round(parseFloat(pct) / 5));
-      console.log(`    ${label.padEnd(30)} ${pct.padStart(5)}%  ${bar}`);
+    const modeLabel = ev.choiceMode === "simultaneous" ? "一斉" : ev.choiceMode === "sequential" ? "個別" : "未設定";
+    console.log(`  ${ev.label ?? ev.id} [${modeLabel}]${isBiased ? " ⚠️ 偏り" : ""}`);
+    for (const { label, count } of Object.values(ec)) {
+      const p = ((count / total) * 100).toFixed(1);
+      console.log(`    ${label.padEnd(30)} ${p.padStart(5)}%  ${"▪".repeat(Math.round(parseFloat(p) / 5))}`);
     }
   }
   if (!biasFound) console.log("  ✅ 大きな偏りなし");
   console.log();
 
-  // ストーリータグ多様性
+  // タグ多様性
   console.log("【ストーリータグ多様性】");
-  console.log(`  プレイヤーあたり平均タグ数: ${mean(storyTagsPerPlayer).toFixed(1)}  (min: ${Math.min(...storyTagsPerPlayer)}, max: ${Math.max(...storyTagsPerPlayer)})`);
-  const topTags = Object.entries(storyTagCounts).sort(([, a], [, b]) => b - a).slice(0, 12);
-  console.log("  頻出 top12:");
-  for (const [tag, count] of topTags) {
-    const pct = ((count / totalPlayers) * 100).toFixed(1);
-    console.log(`    ${tag.padEnd(16)} ${pct.padStart(5)}%`);
-  }
-  console.log();
-
-  // ストーリーアワード
-  console.log("【ストーリーアワード分布】");
-  for (const [label, count] of Object.entries(storyAwardCounts).sort(([, a], [, b]) => b - a)) {
-    const pct = ((count / totalPlayers) * 100).toFixed(1);
-    console.log(`  ${label.padEnd(26)} ${pct.padStart(5)}%`);
+  console.log(`  プレイヤーあたり平均タグ数: ${mean(tagsPerPlayer).toFixed(1)}  (min: ${Math.min(...tagsPerPlayer)}, max: ${Math.max(...tagsPerPlayer)})`);
+  for (const [tag, count] of Object.entries(tagCounts).sort(([,a],[,b])=>b-a).slice(0, 12)) {
+    console.log(`    ${tag.padEnd(16)} ${pct(count, totalPlayers).padStart(5)}%`);
   }
   console.log();
 
@@ -531,18 +489,17 @@ async function main() {
   console.log("【バランス総評】");
   const arcBalNum = parseFloat(arcBal);
   console.log(arcBalNum >= 70 ? "  ✅ アーキタイプ分布は均等" : arcBalNum >= 50 ? `  🟡 アーキタイプにやや偏り (${arcBal}%)` : `  🔴 アーキタイプに大きな偏り (${arcBal}%) — 要調整`);
-  if (modeIssues.length === 0) console.log("  ✅ choiceMode フィールドに問題なし");
-  else console.log(`  🔴 choiceMode に ${modeIssues.length} 件の問題`);
-  const lowTraits = LIFE_TRAIT_KEYS.filter((k) => mean(traitSamples[k]) <= 3);
-  const highTraits = LIFE_TRAIT_KEYS.filter((k) => mean(traitSamples[k]) >= 17);
-  if (lowTraits.length > 0) console.log(`  🔴 慢性的に低いトレイト: ${lowTraits.join(", ")}`);
-  if (highTraits.length > 0) console.log(`  🟡 上限張り付きトレイト: ${highTraits.join(", ")}`);
-  if (lowTraits.length === 0 && highTraits.length === 0) console.log("  ✅ トレイトのバランスに大きな問題なし");
+  console.log(modeIssues.length === 0 ? "  ✅ choiceMode 問題なし" : `  🔴 choiceMode に ${modeIssues.length} 件の問題`);
+  const lowT  = LIFE_TRAIT_KEYS.filter((k) => mean(traitSamples[k]) <= 3);
+  const highT = LIFE_TRAIT_KEYS.filter((k) => mean(traitSamples[k]) >= 17);
+  if (lowT.length)  console.log(`  🔴 慢性的に低いトレイト: ${lowT.join(", ")}`);
+  if (highT.length) console.log(`  🟡 上限張り付きトレイト: ${highT.join(", ")}`);
+  if (!lowT.length && !highT.length) console.log("  ✅ トレイトのバランスに大きな問題なし");
   console.log();
   console.log(`${"═".repeat(58)}\n`);
 }
 
 main().catch((err) => {
-  console.error("シミュレーション失敗:", err);
+  process.stderr.write(`シミュレーション失敗: ${err.message}\n`);
   process.exit(1);
 });
