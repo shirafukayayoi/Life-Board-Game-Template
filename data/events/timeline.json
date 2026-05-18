@@ -5,7 +5,7 @@
     "season": "spring",
     "label": "1年 春",
     "theme": "最初の居場所",
-    "description": "大学に入ったばかり。どこに自分の席を作るかを決める。",
+    "description": "入学してすぐの春。授業、新歓、バイト、ひとり時間のどれを優先する？",
     "choices": [
       {
         "id": "y1sp-class",
@@ -25,15 +25,15 @@
       },
       {
         "id": "y1sp-alone",
-        "label": "一人でキャンパスを観察する",
+        "label": "一人で学食や図書館を回る",
         "tone": "自由",
-        "preview": { "gain": ["自分らしさ", "自由"], "cost": ["初速の人間関係"], "risk": "medium" },
+        "preview": { "gain": ["自分の時間", "自由"], "cost": ["最初の友達作り"], "risk": "medium" },
         "effects": { "freedom": 3, "selfhood": 2, "relationships": -1, "memory": 1 },
         "storyTags": ["一匹狼", "自由人"]
       },
       {
         "id": "y1sp-local",
-        "label": "学外の活動に顔を出す",
+        "label": "地域イベントや外部団体をのぞく",
         "tone": "挑戦",
         "preview": { "gain": ["挑戦", "外の世界"], "cost": ["大学内の安定"], "risk": "medium" },
         "effects": { "challenge": 3, "relationships": 1, "career": 1, "stability": -1 },
@@ -47,11 +47,11 @@
     "season": "summer",
     "label": "1年 夏",
     "theme": "自由時間の使い方",
-    "description": "初めて長く自由に使える夏。何に時間を溶かすか。",
+    "description": "初めての長い夏休み。授業、旅行、バイト、趣味のどれに時間を使う？",
     "choices": [
       {
         "id": "y1su-study",
-        "label": "前期の遅れを整える",
+        "label": "前期の課題と出席を立て直す",
         "tone": "安定",
         "preview": { "gain": ["学業", "安心"], "cost": ["夏の派手さ"], "risk": "low" },
         "effects": { "academic": 3, "stability": 2, "memory": -1 },
@@ -75,9 +75,9 @@
       },
       {
         "id": "y1su-hobby",
-        "label": "趣味に沈む",
+        "label": "趣味にまとまった時間を使う",
         "tone": "自由",
-        "preview": { "gain": ["自分らしさ", "回復"], "cost": ["外との接点"], "risk": "medium" },
+        "preview": { "gain": ["自分の時間", "回復"], "cost": ["外との接点"], "risk": "medium" },
         "effects": { "selfhood": 3, "freedom": 3, "wellbeing": 1, "relationships": -1 },
         "storyTags": ["趣味", "自由人"]
       }
@@ -93,7 +93,7 @@
     "choices": [
       {
         "id": "y1au-routine",
-        "label": "朝型に整える",
+        "label": "1限に間に合う生活に戻す",
         "tone": "安定",
         "preview": { "gain": ["生活安定", "体力"], "cost": ["夜の誘い"], "risk": "low" },
         "effects": { "stability": 3, "wellbeing": 2, "memory": -1 },
@@ -109,9 +109,9 @@
       },
       {
         "id": "y1au-solo",
-        "label": "一人のペースを守る",
+        "label": "誘いを少し断って自分の時間を作る",
         "tone": "自由",
-        "preview": { "gain": ["自分らしさ", "回復"], "cost": ["誘われやすさ"], "risk": "medium" },
+        "preview": { "gain": ["自分の時間", "回復"], "cost": ["誘われやすさ"], "risk": "medium" },
         "effects": { "selfhood": 3, "wellbeing": 2, "relationships": -2, "freedom": 1 },
         "storyTags": ["一人時間", "自由人"]
       },
@@ -119,7 +119,7 @@
         "id": "y1au-project",
         "label": "小さな企画を始める",
         "tone": "挑戦",
-        "preview": { "gain": ["挑戦", "将来の種"], "cost": ["余白"], "risk": "medium" },
+        "preview": { "gain": ["挑戦", "将来準備"], "cost": ["休む時間"], "risk": "medium" },
         "effects": { "challenge": 3, "career": 2, "stability": -1, "wellbeing": -1 },
         "storyTags": ["企画", "挑戦"]
       }
@@ -131,7 +131,7 @@
     "season": "winter",
     "label": "1年 冬",
     "theme": "最初の単位危機",
-    "description": "大学の制度が急に現実になる。ここでどう向き合うか。",
+    "description": "試験、履修、出席が急に重くなる。冬休み前にどう動く？",
     "choices": [
       {
         "id": "y1wi-cram",
@@ -187,7 +187,7 @@
         "id": "y2sp-circle-lead",
         "label": "サークルで後輩を迎える",
         "tone": "社交",
-        "preview": { "gain": ["人間関係", "思い出"], "cost": ["生活の余白"], "risk": "medium" },
+        "preview": { "gain": ["人間関係", "思い出"], "cost": ["予定の余裕"], "risk": "medium" },
         "effects": { "relationships": 4, "memory": 3, "stability": -2, "wellbeing": -1 },
         "storyTags": ["サークル", "先輩"]
       },
@@ -201,11 +201,11 @@
       },
       {
         "id": "y2sp-distance",
-        "label": "所属から少し距離を置く",
+        "label": "サークルや集まりに行く回数を減らす",
         "tone": "自由",
-        "preview": { "gain": ["自分らしさ", "余白"], "cost": ["所属感"], "risk": "medium" },
+        "preview": { "gain": ["自分の時間", "休む時間"], "cost": ["サークルとの関係"], "risk": "medium" },
         "effects": { "freedom": 3, "selfhood": 2, "relationships": -2, "wellbeing": 1 },
-        "storyTags": ["距離感", "自由人"]
+        "storyTags": ["一人時間", "自由人"]
       }
     ]
   },
@@ -237,7 +237,7 @@
         "id": "y2su-trip",
         "label": "目的のない旅に出る",
         "tone": "自由",
-        "preview": { "gain": ["自分らしさ", "思い出"], "cost": ["生活安定"], "risk": "medium" },
+        "preview": { "gain": ["自分の時間", "思い出"], "cost": ["生活安定"], "risk": "medium" },
         "effects": { "selfhood": 3, "freedom": 3, "memory": 2, "stability": -2 },
         "storyTags": ["旅", "自分探し"]
       },
@@ -245,7 +245,7 @@
         "id": "y2su-build",
         "label": "小さな事業や作品を作る",
         "tone": "挑戦",
-        "preview": { "gain": ["挑戦", "将来の種"], "cost": ["生活リズム"], "risk": "high" },
+        "preview": { "gain": ["挑戦", "将来準備"], "cost": ["生活リズム"], "risk": "high" },
         "effects": { "challenge": 4, "career": 2, "selfhood": 1, "stability": -2, "wellbeing": -1 },
         "storyTags": ["起業", "制作"]
       }
@@ -279,7 +279,7 @@
         "id": "y2au-vanish",
         "label": "キャンパス外に自分の居場所を作る",
         "tone": "自由",
-        "preview": { "gain": ["自分らしさ", "外の物語"], "cost": ["学内の流れ"], "risk": "high" },
+        "preview": { "gain": ["自分の時間", "学外経験"], "cost": ["学内の予定"], "risk": "high" },
         "effects": { "selfhood": 4, "freedom": 3, "wellbeing": 2, "memory": 2, "academic": -2, "relationships": -1 },
         "storyTags": ["越境", "自分探し", "学外拠点"]
       },
@@ -287,7 +287,7 @@
         "id": "y2au-contest",
         "label": "コンテストに出す",
         "tone": "挑戦",
-        "preview": { "gain": ["挑戦", "将来の種"], "cost": ["安定"], "risk": "high" },
+        "preview": { "gain": ["挑戦", "将来準備"], "cost": ["安定"], "risk": "high" },
         "effects": { "challenge": 4, "career": 2, "memory": 1, "stability": -2 },
         "storyTags": ["挑戦", "コンテスト"]
       }
@@ -299,11 +299,11 @@
     "season": "winter",
     "label": "2年 冬",
     "theme": "崩れ始める人、整う人",
-    "description": "疲れ、単位、金欠、人間関係。見ないふりをしたものが顔を出す。",
+    "description": "単位、金欠、睡眠不足、人間関係がまとめて来た。まず何から片付ける？",
     "choices": [
       {
         "id": "y2wi-maintain",
-        "label": "生活を棚卸しする",
+        "label": "予定と出費を見直す",
         "tone": "回復",
         "preview": { "gain": ["生活安定", "回復"], "cost": ["派手な進展"], "risk": "low" },
         "effects": { "stability": 4, "wellbeing": 3, "memory": -1 },
@@ -319,7 +319,7 @@
       },
       {
         "id": "y2wi-overwork",
-        "label": "気合いで全部抱える",
+        "label": "全部自分でなんとかしようとする",
         "tone": "挑戦",
         "preview": { "gain": ["学業", "将来準備"], "cost": ["体力"], "risk": "high" },
         "effects": { "academic": 3, "career": 3, "challenge": 1, "wellbeing": -4 },
@@ -327,9 +327,9 @@
       },
       {
         "id": "y2wi-letgo",
-        "label": "抱えきれない荷物を手放す",
+        "label": "予定を減らして、まず寝る",
         "tone": "自由",
-        "preview": { "gain": ["回復", "自分らしさ"], "cost": ["期待に応える速さ"], "risk": "medium" },
+        "preview": { "gain": ["回復", "自分の時間"], "cost": ["周りの期待"], "risk": "medium" },
         "effects": { "wellbeing": 4, "selfhood": 3, "freedom": 2, "memory": 1, "academic": -1, "career": -1 },
         "storyTags": ["手放す", "自由人", "生活再設計"]
       }
@@ -341,7 +341,7 @@
     "season": "spring",
     "label": "3年 春",
     "theme": "専門性",
-    "description": "自分の専攻や得意分野に、そろそろ名前をつける時期。",
+    "description": "ゼミや研究室の話が増えてきた。3年生は何を中心に過ごす？",
     "choices": [
       {
         "id": "y3sp-research",
@@ -355,7 +355,7 @@
         "id": "y3sp-community",
         "label": "人の集まる場所を作る",
         "tone": "社交",
-        "preview": { "gain": ["人間関係", "思い出"], "cost": ["余白"], "risk": "medium" },
+        "preview": { "gain": ["人間関係", "思い出"], "cost": ["休む時間"], "risk": "medium" },
         "effects": { "relationships": 4, "memory": 2, "challenge": 1, "stability": -2 },
         "storyTags": ["コミュニティ", "代表"]
       },
@@ -363,7 +363,7 @@
         "id": "y3sp-abroad",
         "label": "留学や長期滞在を狙う",
         "tone": "挑戦",
-        "preview": { "gain": ["挑戦", "自分らしさ"], "cost": ["安定"], "risk": "high" },
+        "preview": { "gain": ["挑戦", "自分の経験"], "cost": ["安定"], "risk": "high" },
         "effects": { "challenge": 4, "selfhood": 3, "freedom": 2, "stability": -3, "academic": 1 },
         "storyTags": ["留学", "越境"]
       },
@@ -371,7 +371,7 @@
         "id": "y3sp-restudy",
         "label": "興味を変えることを認める",
         "tone": "自由",
-        "preview": { "gain": ["自分らしさ", "自由"], "cost": ["遠回り"], "risk": "medium" },
+        "preview": { "gain": ["自分の時間", "自由"], "cost": ["卒業までの近道"], "risk": "medium" },
         "effects": { "selfhood": 4, "freedom": 3, "academic": -1, "career": -1 },
         "storyTags": ["方向転換", "自分探し"]
       }
@@ -383,7 +383,7 @@
     "season": "summer",
     "label": "3年 夏",
     "theme": "大きな挑戦",
-    "description": "ここで何かを賭けるか、足場を固めるか。",
+    "description": "夏の予定を決める時期。インターン、恋愛、制作、休みのどれに時間を使う？",
     "choices": [
       {
         "id": "y3su-intern",
@@ -403,19 +403,19 @@
       },
       {
         "id": "y3su-startup",
-        "label": "起業や制作に賭ける",
+        "label": "起業や制作に夏を使う",
         "tone": "挑戦",
-        "preview": { "gain": ["挑戦", "自分らしさ"], "cost": ["安定", "体力"], "risk": "high" },
+        "preview": { "gain": ["挑戦", "自分の経験"], "cost": ["安定", "体力"], "risk": "high" },
         "effects": { "challenge": 5, "selfhood": 2, "career": 2, "stability": -3, "wellbeing": -2 },
         "storyTags": ["起業", "制作", "挑戦"]
       },
       {
         "id": "y3su-retreat",
-        "label": "何もしない夏を守り抜く",
+        "label": "予定を入れずに夏休みを過ごす",
         "tone": "回復",
-        "preview": { "gain": ["回復", "自分らしさ", "静かな記憶"], "cost": ["外から見える成果"], "risk": "medium" },
+        "preview": { "gain": ["回復", "自分の時間", "休めた実感"], "cost": ["わかりやすい成果"], "risk": "medium" },
         "effects": { "wellbeing": 5, "selfhood": 4, "freedom": 2, "memory": 2, "career": -1 },
-        "storyTags": ["休む", "一人時間", "空白の夏"]
+        "storyTags": ["休む", "一人時間", "予定少なめ"]
       }
     ]
   },
@@ -425,7 +425,7 @@
     "season": "autumn",
     "label": "3年 秋",
     "theme": "将来の焦り",
-    "description": "周りの進路が見え始める。自分だけ止まっているようにも見える。",
+    "description": "周りがインターンや就活の話をし始めた。自分はどう動く？",
     "choices": [
       {
         "id": "y3au-career",
@@ -447,15 +447,15 @@
         "id": "y3au-gap",
         "label": "休学を現実的に考える",
         "tone": "自由",
-        "preview": { "gain": ["自分らしさ", "別ルートの準備"], "cost": ["卒業の直線距離"], "risk": "high" },
+        "preview": { "gain": ["自分の時間", "別ルートの準備"], "cost": ["卒業までの近道"], "risk": "high" },
         "effects": { "selfhood": 5, "freedom": 4, "wellbeing": 3, "memory": 2, "academic": -3 },
         "storyTags": ["休学", "自分探し", "別ルート"]
       },
       {
         "id": "y3au-pitch",
-        "label": "自分の活動を外に出す",
+        "label": "作ったものをSNSやイベントで発表する",
         "tone": "挑戦",
-        "preview": { "gain": ["挑戦", "将来の種"], "cost": ["安定"], "risk": "medium" },
+        "preview": { "gain": ["挑戦", "将来準備"], "cost": ["安定"], "risk": "medium" },
         "effects": { "challenge": 4, "career": 3, "memory": 1, "stability": -2 },
         "storyTags": ["発信", "挑戦"]
       }
@@ -466,14 +466,14 @@
     "year": 3,
     "season": "winter",
     "label": "3年 冬",
-    "theme": "進路の輪郭",
-    "description": "卒業後の姿が少しずつ見える。見たくない人もいる。",
+    "theme": "卒業後の話",
+    "description": "卒業後の話を避けにくくなってきた。就活、卒論、生活をどう整理する？",
     "choices": [
       {
         "id": "y3wi-thesis",
         "label": "卒論や研究の軸を決める",
         "tone": "安定",
-        "preview": { "gain": ["学業", "卒業"], "cost": ["余白"], "risk": "medium" },
+        "preview": { "gain": ["学業", "卒業"], "cost": ["休む時間"], "risk": "medium" },
         "effects": { "academic": 4, "stability": 2, "wellbeing": -1 },
         "storyTags": ["卒論", "研究"]
       },
@@ -487,7 +487,7 @@
       },
       {
         "id": "y3wi-burn",
-        "label": "全部を詰め込む",
+        "label": "卒論も就活も予定も詰め込む",
         "tone": "挑戦",
         "preview": { "gain": ["学業", "将来準備", "挑戦"], "cost": ["体力"], "risk": "high" },
         "effects": { "academic": 3, "career": 3, "challenge": 2, "wellbeing": -4, "stability": -1 },
@@ -495,11 +495,11 @@
       },
       {
         "id": "y3wi-withdraw",
-        "label": "連絡を絞って静かな冬にする",
+        "label": "返信する相手を減らして休む",
         "tone": "回復",
-        "preview": { "gain": ["回復", "自分らしさ", "余白"], "cost": ["周囲の流れ"], "risk": "medium" },
+        "preview": { "gain": ["回復", "自分の時間", "休む時間"], "cost": ["周りとの連絡"], "risk": "medium" },
         "effects": { "wellbeing": 5, "selfhood": 3, "freedom": 2, "relationships": -1 },
-        "storyTags": ["休む", "一人時間", "静かな冬"]
+        "storyTags": ["休む", "一人時間", "連絡少なめ"]
       }
     ]
   },
@@ -509,7 +509,7 @@
     "season": "spring",
     "label": "4年 春",
     "theme": "現実と理想",
-    "description": "残された時間で、何を現実にして何を諦めるか。",
+    "description": "卒業までに、単位、進路、居場所のどれを優先する？",
     "choices": [
       {
         "id": "y4sp-graduate",
@@ -529,17 +529,17 @@
       },
       {
         "id": "y4sp-independent",
-        "label": "卒業後の独自路線を仕込む",
+        "label": "卒業後にやる活動を準備する",
         "tone": "挑戦",
-        "preview": { "gain": ["挑戦", "自分らしさ"], "cost": ["安定"], "risk": "high" },
+        "preview": { "gain": ["挑戦", "自分の経験"], "cost": ["安定"], "risk": "high" },
         "effects": { "challenge": 4, "selfhood": 3, "career": 1, "stability": -3 },
         "storyTags": ["独自路線", "挑戦"]
       },
       {
         "id": "y4sp-leave",
-        "label": "いま立ち止まる決断をする",
+        "label": "休学や留年も含めて考える",
         "tone": "自由",
-        "preview": { "gain": ["回復", "自分らしさ", "納得"], "cost": ["卒業時期"], "risk": "high" },
+        "preview": { "gain": ["回復", "自分で決めた感覚"], "cost": ["卒業時期"], "risk": "high" },
         "effects": { "wellbeing": 5, "selfhood": 5, "freedom": 3, "memory": 2, "academic": -4, "career": -1 },
         "storyTags": ["休学", "手放す", "納得"]
       }
@@ -555,7 +555,7 @@
     "choices": [
       {
         "id": "y4su-recover-credits",
-        "label": "残りを現実的に回収する",
+        "label": "残りの単位と手続きを片付ける",
         "tone": "安定",
         "preview": { "gain": ["卒業", "生活安定"], "cost": ["夏の記憶"], "risk": "medium" },
         "effects": { "academic": 5, "stability": 2, "wellbeing": -1, "memory": -1 },
@@ -571,19 +571,19 @@
       },
       {
         "id": "y4su-showcase",
-        "label": "自分の集大成を発表する",
+        "label": "卒業前に制作や研究を発表する",
         "tone": "挑戦",
-        "preview": { "gain": ["挑戦", "将来の種"], "cost": ["体力"], "risk": "medium" },
+        "preview": { "gain": ["挑戦", "将来準備"], "cost": ["体力"], "risk": "medium" },
         "effects": { "challenge": 4, "career": 3, "selfhood": 2, "wellbeing": -2 },
         "storyTags": ["発表", "制作"]
       },
       {
         "id": "y4su-empty",
-        "label": "予定を入れない夏を味わう",
+        "label": "バイトも予定も少なめにする",
         "tone": "自由",
-        "preview": { "gain": ["自分らしさ", "回復", "余白の記憶"], "cost": ["外から見える成果"], "risk": "medium" },
+        "preview": { "gain": ["自分の時間", "回復", "休めた実感"], "cost": ["わかりやすい成果"], "risk": "medium" },
         "effects": { "selfhood": 4, "freedom": 4, "wellbeing": 4, "memory": 2, "career": -1 },
-        "storyTags": ["空白", "自由人", "余白"]
+        "storyTags": ["予定少なめ", "自由人", "休む時間"]
       }
     ]
   },
@@ -592,14 +592,14 @@
     "year": 4,
     "season": "autumn",
     "label": "4年 秋",
-    "theme": "回収できるもの",
-    "description": "残った縁、単位、進路、後悔。最後に何を回収するか。",
+    "theme": "卒業前にやること",
+    "description": "卒業前にやることがまだ残っている。単位、人間関係、進路のどれを優先する？",
     "choices": [
       {
         "id": "y4au-finish",
-        "label": "卒業に必要なものを閉じる",
+        "label": "卒業に必要な手続きを終わらせる",
         "tone": "安定",
-        "preview": { "gain": ["卒業", "安心"], "cost": ["余白"], "risk": "low" },
+        "preview": { "gain": ["卒業", "安心"], "cost": ["休む時間"], "risk": "low" },
         "effects": { "academic": 5, "stability": 2, "career": 1 },
         "storyTags": ["卒業優先", "締切"]
       },
@@ -613,17 +613,17 @@
       },
       {
         "id": "y4au-bet",
-        "label": "最後に大きく賭ける",
+        "label": "卒業前に大きな挑戦をする",
         "tone": "挑戦",
-        "preview": { "gain": ["挑戦", "物語"], "cost": ["安定"], "risk": "high" },
+        "preview": { "gain": ["挑戦", "話題になる経験"], "cost": ["安定"], "risk": "high" },
         "effects": { "challenge": 5, "memory": 3, "career": 1, "stability": -4, "wellbeing": -1 },
         "storyTags": ["賭け", "挑戦"]
       },
       {
         "id": "y4au-accept",
-        "label": "遅れた自分を受け入れる",
+        "label": "遅れている前提で予定を組む",
         "tone": "回復",
-        "preview": { "gain": ["自分らしさ", "回復"], "cost": ["わかりやすい成功"], "risk": "medium" },
+        "preview": { "gain": ["自分の時間", "回復"], "cost": ["すぐ卒業する安心"], "risk": "medium" },
         "effects": { "selfhood": 5, "wellbeing": 4, "academic": -2 },
         "storyTags": ["受容", "自分探し"]
       }
@@ -635,7 +635,7 @@
     "season": "winter",
     "label": "4年 冬",
     "theme": "卒業、その先",
-    "description": "卒業できる人も、できない人も、何かを持ってキャンパスを出る。",
+    "description": "卒業式が近づいてきた。最後に誰と何をして終わる？",
     "choices": [
       {
         "id": "y4wi-ceremony",
@@ -657,7 +657,7 @@
         "id": "y4wi-next",
         "label": "次の挑戦にもう動き出す",
         "tone": "挑戦",
-        "preview": { "gain": ["挑戦", "将来の種"], "cost": ["余韻"], "risk": "medium" },
+        "preview": { "gain": ["挑戦", "将来準備"], "cost": ["卒業前のゆっくり時間"], "risk": "medium" },
         "effects": { "challenge": 4, "career": 3, "selfhood": 1, "memory": -1 },
         "storyTags": ["次の挑戦", "独自路線"]
       },
@@ -665,7 +665,7 @@
         "id": "y4wi-stay",
         "label": "もう少しだけキャンパスに残る",
         "tone": "自由",
-        "preview": { "gain": ["自分らしさ", "余白", "最後の物語"], "cost": ["卒業時期"], "risk": "high" },
+        "preview": { "gain": ["自分の時間", "自由時間", "最後の思い出"], "cost": ["卒業時期"], "risk": "high" },
         "effects": { "selfhood": 5, "freedom": 4, "memory": 3, "wellbeing": 2, "academic": -3 },
         "storyTags": ["留年", "自由人", "キャンパス残留"]
       }

@@ -426,35 +426,59 @@ export function EffectBadges({ effects }: { effects?: StatEffects }) {
 }
 
 export function ChoicePreview({ choice }: { choice: EventChoice }) {
-  if (!choice.preview) return <EffectBadges effects={choice.effects} />;
   const riskLabel: Record<string, string> = {
     low: "低",
     medium: "中",
     high: "高",
     unknown: "不明",
   };
+  const tags = choice.storyTags ?? [];
+
+  if (!choice.preview && !choice.tone && tags.length === 0 && !choice.description) {
+    return (
+      <div style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.5 }}>
+        結果は決定後に反映されます
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {choice.description && (
+        <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.5 }}>
+          {choice.description}
+        </div>
+      )}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
         {choice.tone && <span style={S.effectBadge(true)}>{choice.tone}</span>}
-        {choice.preview.gain.map((item) => (
+        {choice.preview?.gain.map((item) => (
           <span key={`gain-${item}`} style={S.effectBadge(true)}>
             得られそう: {item}
           </span>
         ))}
-        {choice.preview.cost.map((item) => (
+        {choice.preview?.cost.map((item) => (
           <span key={`cost-${item}`} style={S.effectBadge(false)}>
-            失いそう: {item}
+            気をつけたい: {item}
           </span>
         ))}
       </div>
-      <div style={{ fontSize: 12, color: "#9ca3af" }}>
-        リスク: {riskLabel[choice.preview.risk]}
-        {choice.storyTags?.length ? ` / ${choice.storyTags.join("・")}` : ""}
-      </div>
+      {(choice.preview || tags.length > 0) && (
+        <div style={{ fontSize: 12, color: "#9ca3af" }}>
+          {choice.preview ? `リスク: ${riskLabel[choice.preview.risk]}` : ""}
+          {choice.preview && tags.length > 0 ? " / " : ""}
+          {tags.length > 0 ? tags.join("・") : ""}
+        </div>
+      )}
     </div>
   );
+}
+
+function formatPlayerNameList(players: Player[]): string {
+  const names = players.map((player) => `${player.name || "名前未設定"}さん`);
+  if (names.length === 0) return "...";
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]}と${names[1]}`;
+  return `${names.slice(0, -1).join("、")}と${names[names.length - 1]}`;
 }
 
 // ─── Stats Dashboard Component ──────────────────────────────────
@@ -652,9 +676,93 @@ export function ControllerPlayPage() {
     return state.players.find((p) => p.id === currentId);
   }, [state.players, state.turnIndex, state.turnOrder]);
 
-  const isMyTurn = useMemo(
-    () => !!clientId && currentTurnPlayer?.id === clientId,
-    [clientId, currentTurnPlayer]
+  const activeTurnPlayers = useMemo(() => {
+    const activeIds = state.activeTurnPlayerIds?.length
+      ? state.activeTurnPlayerIds
+      : currentTurnPlayer
+        ? [currentTurnPlayer.id]
+        : [];
+    return activeIds
+      .map((id) => state.players.find((player) => player.id === id))
+      .filter((player): player is Player => Boolean(player));
+  }, [currentTurnPlayer, state.activeTurnPlayerIds, state.players]);
+
+  const activeTurnLabel = useMemo(
+    () => formatPlayerNameList(activeTurnPlayers),
+    [activeTurnPlayers]
+  );
+
+  const isActiveTurnPlayer = useMemo(
+    () => !!clientId && activeTurnPlayers.some((player) => player.id === clientId),
+    [activeTurnPlayers, clientId]
+  );
+
+  const isBoardMode = state.mode !== "life_map";
+
+  const myBoardChoiceSubmitted = useMemo(
+    () => Boolean(clientId && state.pendingTurnChoices?.[clientId]),
+    [clientId, state.pendingTurnChoices]
+  );
+
+  const myBoardEvent = useMemo(() => {
+    if (!clientId || !isBoardMode) return null;
+    const eventForPlayer = state.activeTurnEvents?.[clientId];
+    if (eventForPlayer) return eventForPlayer;
+    if (eventTargetPlayerId === clientId) return currentEvent;
+    if (
+      state.currentEvent &&
+      activeTurnPlayers.length === 1 &&
+      activeTurnPlayers[0]?.id === clientId
+    ) {
+      return state.currentEvent;
+    }
+    return null;
+  }, [
+    activeTurnPlayers,
+    clientId,
+    currentEvent,
+    eventTargetPlayerId,
+    isBoardMode,
+    state.activeTurnEvents,
+    state.currentEvent,
+  ]);
+
+  const myAvailableChoiceIds = useMemo(() => {
+    if (!clientId) return [];
+    if (!isBoardMode) return availableChoiceIds;
+    const idsForPlayer = state.availableChoiceIdsByPlayer?.[clientId];
+    if (idsForPlayer) return idsForPlayer;
+    if (eventTargetPlayerId === clientId) return availableChoiceIds;
+    if (
+      state.currentEvent &&
+      activeTurnPlayers.length === 1 &&
+      activeTurnPlayers[0]?.id === clientId
+    ) {
+      return state.availableChoiceIds;
+    }
+    return [];
+  }, [
+    activeTurnPlayers,
+    availableChoiceIds,
+    clientId,
+    eventTargetPlayerId,
+    isBoardMode,
+    state.availableChoiceIds,
+    state.availableChoiceIdsByPlayer,
+    state.currentEvent,
+  ]);
+
+  const boardChoiceResultForMe = useMemo(() => {
+    if (!clientId || !isBoardMode) return null;
+    return (
+      state.lastTurnGroupResults?.find((result) => result.playerId === clientId) ??
+      null
+    );
+  }, [clientId, isBoardMode, state.lastTurnGroupResults]);
+
+  const activeChoiceResult = useMemo(
+    () => boardChoiceResultForMe ?? lastChoiceResult,
+    [boardChoiceResultForMe, lastChoiceResult]
   );
 
   const myLifeChoiceSubmitted = useMemo(
@@ -767,6 +875,7 @@ export function ControllerPlayPage() {
           // If this event is for me and I just rolled, delay showing
           // the event so the dice result is visible for 1.5 seconds
           const isForMe = msg.playerId === clientIdRef.current;
+          if (!isForMe) break;
           const delay = isForMe ? 1500 : 0;
           setTimeout(() => {
             setMyDiceResult(null);
@@ -787,15 +896,17 @@ export function ControllerPlayPage() {
         }
 
         case "choice_result": {
-          const isLifeMap = stateRef.current.mode === "life_map";
           const isMine = msg.result.playerId === clientIdRef.current;
-          if (isLifeMap && !isMine) break;
+          if (!isMine) break;
 
           setLastChoiceResult(msg.result);
           setCurrentEvent(null);
           setConfirmChoice(null);
           setShowStatChanges(true);
-          setTimeout(() => setShowStatChanges(false), isLifeMap ? 5000 : 2000);
+          setTimeout(
+            () => setShowStatChanges(false),
+            stateRef.current.mode === "life_map" ? 5000 : 2000
+          );
           break;
         }
 
@@ -875,49 +986,134 @@ export function ControllerPlayPage() {
     | "dice_result"
     | "choosing"
     | "animating"
+    | "year_recap"
     | "result";
 
   const viewState = useMemo((): ViewState => {
     if (gameResults || state.phase === "result") return "result";
-    if (showStatChanges && lastChoiceResult) return "animating";
-    if (currentEvent && eventTargetPlayerId === clientId) return "choosing";
+    if (state.phase === "year_recap") return "year_recap";
+    if ((showStatChanges || state.phase === "animating") && activeChoiceResult) {
+      return "animating";
+    }
+    if (isBoardMode && state.phase === "choosing" && myBoardChoiceSubmitted) {
+      return "waiting";
+    }
+    if (isBoardMode && state.phase === "choosing" && myBoardEvent) {
+      return "choosing";
+    }
+    if (
+      !isBoardMode &&
+      currentEvent &&
+      eventTargetPlayerId === clientId &&
+      !myLifeChoiceSubmitted
+    ) {
+      return "choosing";
+    }
     if (myDiceResult && !currentEvent) return "dice_result";
-    if (isMyTurn && state.phase === "rolling") return "rolling";
+    if (isActiveTurnPlayer && state.phase === "rolling") return "rolling";
     return "waiting";
   }, [
     state.phase,
-    isMyTurn,
+    isActiveTurnPlayer,
+    isBoardMode,
     currentEvent,
     eventTargetPlayerId,
     clientId,
-    lastChoiceResult,
+    activeChoiceResult,
     showStatChanges,
     gameResults,
     myDiceResult,
+    myBoardChoiceSubmitted,
+    myBoardEvent,
+    myLifeChoiceSubmitted,
   ]);
 
   // ─── Render helpers ─────────────────────────────────────────
 
-  const renderWaiting = () => (
-    <div style={S.card}>
-      <div style={S.waitingMsg(true)}>
-        {state.phase === "lobby"
-          ? "ゲーム開始を待っています..."
-          : state.mode === "life_map" && state.phase === "choosing"
-            ? myLifeChoiceSubmitted
-              ? "選択済み。ほかの人の選択を待っています..."
-              : "みんなが同時に選択中..."
-            : `${currentTurnPlayer?.name ?? "..."}のターン中...`}
+  const renderTurnGroupSummary = () => {
+    if (!isBoardMode || activeTurnPlayers.length === 0 || state.phase === "lobby") {
+      return null;
+    }
+
+    const submittedPlayers = activeTurnPlayers.filter((player) =>
+      Boolean(state.pendingTurnChoices?.[player.id])
+    );
+
+    return (
+      <div
+        style={{
+          borderRadius: 14,
+          background: "#f8fafc",
+          border: "1px solid #e5e7eb",
+          padding: "12px 14px",
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+          今のターン
+        </div>
+        <div style={{ fontSize: 18, fontWeight: 800, marginTop: 4 }}>
+          {activeTurnLabel}
+        </div>
+        {state.phase === "choosing" && activeTurnPlayers.length > 1 && (
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+            {submittedPlayers.length}/{activeTurnPlayers.length} 人が選択済み
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
+
+  const renderWaiting = () => {
+    const pendingPlayers = activeTurnPlayers.filter(
+      (player) => !state.pendingTurnChoices?.[player.id]
+    );
+    const waitingForOthers = pendingPlayers.filter(
+      (player) => player.id !== clientId
+    );
+
+    let message = "待機中...";
+    if (state.phase === "lobby") {
+      message = "ゲーム開始を待っています...";
+    } else if (state.mode === "life_map" && state.phase === "choosing") {
+      message = myLifeChoiceSubmitted
+        ? "選択済み。ほかの人の選択を待っています..."
+        : "みんなが同時に選択中...";
+    } else if (isBoardMode && state.phase === "choosing" && myBoardChoiceSubmitted) {
+      message =
+        waitingForOthers.length > 0
+          ? `選択済み。${formatPlayerNameList(waitingForOthers)}の選択を待っています...`
+          : "選択済み。結果を待っています...";
+    } else if (isBoardMode && state.phase === "choosing") {
+      message = `${activeTurnLabel}が選択中...`;
+    } else if (isBoardMode && state.phase === "rolling") {
+      message = `${activeTurnLabel}のターンです...`;
+    } else if (isBoardMode && state.phase === "animating") {
+      message = `${activeTurnLabel}の結果を確認中...`;
+    } else if (currentTurnPlayer) {
+      message = `${currentTurnPlayer.name}さんのターン中...`;
+    }
+
+    return (
+      <div style={S.card}>
+        {renderTurnGroupSummary()}
+        <div style={S.waitingMsg(true)}>{message}</div>
+      </div>
+    );
+  };
 
   const renderRolling = () => (
     <div style={S.card}>
+      {renderTurnGroupSummary()}
       <div style={{ textAlign: "center", padding: "16px 0" }}>
         <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
-          あなたの月です!
+          {activeTurnPlayers.length > 1 ? "あなたたちのターンです!" : "あなたの月です!"}
         </div>
+        {activeTurnPlayers.length > 1 && (
+          <div style={{ fontSize: 14, color: "#6b7280", lineHeight: 1.6 }}>
+            同じタイミングでイベントを開き、それぞれの選択を比べられます。
+          </div>
+        )}
         <button
           style={{
             ...S.diceButton(accentColor),
@@ -954,7 +1150,8 @@ export function ControllerPlayPage() {
   };
 
   const renderChoosing = () => {
-    if (!currentEvent) return null;
+    const eventToRender = isBoardMode ? myBoardEvent : currentEvent;
+    if (!eventToRender) return null;
     const CHOICE_COLORS = [
       "#3b82f6",
       "#f59e0b",
@@ -964,11 +1161,12 @@ export function ControllerPlayPage() {
     ];
     return (
       <div style={S.card}>
-        <div style={S.eventTitle}>{currentEvent.title}</div>
-        <div style={S.eventDesc}>{currentEvent.description}</div>
+        {renderTurnGroupSummary()}
+        <div style={S.eventTitle}>{eventToRender.title}</div>
+        <div style={S.eventDesc}>{eventToRender.description}</div>
 
-        {currentEvent.choices.map((choice, i) => {
-          const isAvailable = availableChoiceIds.includes(choice.id);
+        {eventToRender.choices.map((choice, i) => {
+          const isAvailable = myAvailableChoiceIds.includes(choice.id);
           const letter = String.fromCharCode(65 + i);
           return (
             <div
@@ -1022,7 +1220,7 @@ export function ControllerPlayPage() {
   };
 
   const renderAnimating = () => {
-    if (!lastChoiceResult) return null;
+    if (!activeChoiceResult) return null;
     const allKeys = [...RESOURCE_KEYS, ...EXPERIENCE_KEYS] as string[];
     const labels: Record<string, string> = {
       ...RESOURCE_LABELS,
@@ -1031,19 +1229,20 @@ export function ControllerPlayPage() {
     const changes = allKeys
       .filter(
         (k) =>
-          (lastChoiceResult.effects as Record<string, number>)[k] !== undefined
+          (activeChoiceResult.effects as Record<string, number>)[k] !== undefined
       )
       .map((k) => ({
         key: k,
-        value: (lastChoiceResult.effects as Record<string, number>)[k],
+        value: (activeChoiceResult.effects as Record<string, number>)[k],
         label: labels[k],
       }));
 
     return (
       <div style={S.card}>
+        {renderTurnGroupSummary()}
         <div style={{ textAlign: "center", padding: "20px 0" }}>
           <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
-            「{lastChoiceResult.choiceLabel}」を選択
+            「{activeChoiceResult.choiceLabel}」を選択
           </div>
           <div>
             {changes.map((c) => (
@@ -1053,6 +1252,104 @@ export function ControllerPlayPage() {
               </span>
             ))}
           </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderYearRecap = () => {
+    const recap = state.yearRecap;
+    if (!recap) {
+      return (
+        <div style={S.card}>
+          <div style={S.waitingMsg(false)}>年末の振り返りを準備しています...</div>
+        </div>
+      );
+    }
+
+    return (
+      <div style={S.card}>
+        <div style={S.eventTitle}>{recap.title}</div>
+        <div style={S.eventDesc}>
+          ホストが次の年へ進めるまで、全員の今の状態を確認できます。
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {recap.players.map((player) => {
+            const isMe = player.playerId === clientId;
+            return (
+              <div
+                key={player.playerId}
+                style={{
+                  border: isMe ? `2px solid ${accentColor}` : "1px solid #e5e7eb",
+                  borderRadius: 16,
+                  padding: 14,
+                  background: isMe ? "#f8fbff" : "#fff",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  <div style={{ fontSize: 17, fontWeight: 800 }}>
+                    {player.playerName}
+                  </div>
+                  {isMe && (
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: accentColor,
+                        background: "#eff6ff",
+                        borderRadius: 999,
+                        padding: "4px 8px",
+                      }}
+                    >
+                      あなた
+                    </span>
+                  )}
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 8,
+                    marginBottom: 10,
+                  }}
+                >
+                  <div style={{ fontSize: 13, color: "#64748b" }}>
+                    単位
+                    <div style={{ fontSize: 20, color: "#111827", fontWeight: 800 }}>
+                      {player.credits}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, color: "#64748b" }}>
+                    卒業見込み
+                    <div style={{ fontSize: 14, color: "#111827", fontWeight: 700 }}>
+                      {player.graduationOutlook}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
+                  {player.creditStatus}
+                </div>
+                {player.strengths.length > 0 && (
+                  <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.5 }}>
+                    強み: {player.strengths.join("、")}
+                  </div>
+                )}
+                {player.warningSigns.length > 0 && (
+                  <div style={{ fontSize: 13, color: "#92400e", lineHeight: 1.5 }}>
+                    注意: {player.warningSigns.join("、")}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -1130,7 +1427,7 @@ export function ControllerPlayPage() {
             : myResult.ending?.title ?? "キャンパスライフ完走"}
         </div>
         <div style={S.resultDesc}>
-          {myResult.summary ?? myResult.ending?.description ?? "4年間の選択がここに刻まれました。"}
+          {myResult.summary ?? myResult.ending?.description ?? "4年間の選択結果です。"}
         </div>
         {myResult.ending?.flavorText && (
           <div className="controller-result-flavor">
@@ -1220,8 +1517,9 @@ export function ControllerPlayPage() {
 
   // ─── Confirmation Dialog ────────────────────────────────────
   const renderConfirmDialog = () => {
-    if (!confirmChoice || !currentEvent) return null;
-    const choice = currentEvent.choices.find((c) => c.id === confirmChoice);
+    const eventToConfirm = isBoardMode ? myBoardEvent : currentEvent;
+    if (!confirmChoice || !eventToConfirm) return null;
+    const choice = eventToConfirm.choices.find((c) => c.id === confirmChoice);
     if (!choice) return null;
 
     return (
@@ -1266,11 +1564,12 @@ export function ControllerPlayPage() {
         {viewState === "dice_result" && renderDiceResult()}
         {viewState === "choosing" && renderChoosing()}
         {viewState === "animating" && renderAnimating()}
+        {viewState === "year_recap" && renderYearRecap()}
         {viewState === "result" && renderResult()}
       </div>
 
       {/* Stats dashboard (always shown unless result) */}
-      {myPlayer && viewState !== "result" && (
+      {myPlayer && viewState !== "result" && viewState !== "year_recap" && (
         <div style={S.card}>
           <StatsDashboard player={myPlayer} />
         </div>

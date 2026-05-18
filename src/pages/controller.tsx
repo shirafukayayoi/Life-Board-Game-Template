@@ -214,7 +214,9 @@ export function ControllerLobbyPage() {
     sessionStorage.getItem("clg_passkey") ?? ""
   );
   const [state, setState] = useState<GameState>(defaultGameState());
-  const [status, setStatus] = useState("未接続");
+  const [status, setStatus] = useState(
+    name ? "接続準備中" : "名前を入力してください"
+  );
   const [connected, setConnected] = useState(false);
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(false);

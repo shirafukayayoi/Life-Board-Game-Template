@@ -10,6 +10,7 @@ import {
   type GameState,
   type HostManagedPlayer,
   type ServerMessage,
+  type TurnMode,
   defaultGameState,
   wsUrlFromInput,
 } from "../domain/gameShared";
@@ -21,6 +22,63 @@ const FACULTY_LABELS: Record<Faculty, string> = {
   medical: "医療",
   arts_sports: "芸術・スポーツ",
 };
+
+const HOST_JOURNEY_STAGES = [
+  { year: 1, label: "入学", note: "履修・新歓" },
+  { year: 2, label: "拡張", note: "生活と関係" },
+  { year: 3, label: "挑戦", note: "専門・選択" },
+  { year: 4, label: "卒業", note: "進路・締切" },
+];
+
+function formatTurnGroupLabel(players: { name: string }[]) {
+  if (players.length === 0) return "待機中";
+  if (players.length === 1) return `${players[0].name}さんのターン`;
+  if (players.length >= 3) return `全員のターン（${players.map((player) => player.name).join(" / ")}）`;
+  return `${players.map((player) => `${player.name}さん`).join(" と ")}のターン`;
+}
+
+function formatTurnMode(mode: TurnMode | undefined) {
+  return mode === "all" ? "全員一斉" : "2人ずつ";
+}
+
+function HostJourneyStrip({
+  currentRound,
+  mode,
+}: {
+  currentRound: number;
+  mode: GameState["mode"];
+}) {
+  const activeRound = Math.max(1, Math.min(48, currentRound));
+  const activeYear = Math.ceil(activeRound / 12);
+  const roundInfo = getRoundInfo(activeRound);
+
+  return (
+    <div className="host-journey-strip" aria-label="4年間の進行">
+      <div className="host-journey-strip__header">
+        <span>Campus Journey</span>
+        <strong>
+          {mode === "life_map" ? "人生マップ" : `Month ${activeRound}/48 - ${roundInfo.label}`}
+        </strong>
+      </div>
+      <div className="host-journey-strip__stages">
+        {HOST_JOURNEY_STAGES.map((stage) => (
+          <div
+            key={stage.year}
+            className={[
+              "host-journey-stage",
+              mode !== "life_map" && stage.year === activeYear ? "host-journey-stage--active" : "",
+              mode !== "life_map" && stage.year < activeYear ? "host-journey-stage--past" : "",
+            ].filter(Boolean).join(" ")}
+          >
+            <span>{stage.year}年</span>
+            <strong>{stage.label}</strong>
+            <small>{stage.note}</small>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function formatDuration(seconds: number) {
   const safeSeconds = Math.max(0, Math.floor(seconds));
@@ -75,9 +133,38 @@ function App() {
     return state.currentEvent.choices.filter((choice) => availableIds.has(choice.id));
   }, [state.availableChoiceIds, state.currentEvent]);
 
+  const activeTurnPlayerIds = useMemo(() => {
+    if (state.mode === "life_map") return [];
+    if (state.activeTurnPlayerIds && state.activeTurnPlayerIds.length > 0) {
+      return state.activeTurnPlayerIds;
+    }
+    return currentPlayer ? [currentPlayer.id] : [];
+  }, [currentPlayer, state.activeTurnPlayerIds, state.mode]);
+
+  const activeTurnPlayers = useMemo(
+    () => activeTurnPlayerIds
+      .map((playerId) => state.players.find((player) => player.id === playerId))
+      .filter((player): player is GameState["players"][number] => Boolean(player)),
+    [activeTurnPlayerIds, state.players],
+  );
+
+  const activeTurnPlayerIdSet = useMemo(
+    () => new Set(activeTurnPlayerIds),
+    [activeTurnPlayerIds],
+  );
+
+  const pendingTurnChoices = state.pendingTurnChoices ?? {};
+  const turnMode = state.turnMode ?? "pair";
+  const activeWaitingPlayers = activeTurnPlayers.filter(
+    (player) => !pendingTurnChoices[player.id],
+  );
+  const activeSubmittedPlayers = activeTurnPlayers.filter(
+    (player) => Boolean(pendingTurnChoices[player.id]),
+  );
+
   const fallbackTargetPlayerId = state.mode === "life_map"
     ? fallbackPlayerId || state.players[0]?.id || ""
-    : currentPlayer?.id || "";
+    : fallbackPlayerId || activeTurnPlayers[0]?.id || currentPlayer?.id || "";
 
   const selectedFallbackPlayer = state.players.find(
     (player) => player.id === fallbackTargetPlayerId,
@@ -106,10 +193,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (state.mode !== "life_map") return;
-    if (fallbackPlayerId && state.players.some((player) => player.id === fallbackPlayerId)) return;
-    setFallbackPlayerId(state.players[0]?.id ?? "");
-  }, [fallbackPlayerId, state.mode, state.players]);
+    const fallbackCandidates = state.mode === "life_map" ? state.players : activeTurnPlayers;
+    if (fallbackPlayerId && fallbackCandidates.some((player) => player.id === fallbackPlayerId)) return;
+    setFallbackPlayerId(fallbackCandidates[0]?.id ?? "");
+  }, [activeTurnPlayers, fallbackPlayerId, state.mode, state.players]);
 
   const connectHost = () => {
     if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) return;
@@ -205,6 +292,12 @@ function App() {
     sendMessage({ type: "reset_game" });
   };
 
+  const endGame = () => {
+    if (!clientId) return;
+    if (!window.confirm("現在の状態でゲームを終了して、結果画面に進みますか？")) return;
+    sendMessage({ type: "end_game" });
+  };
+
   const removePlayer = (playerId: string, playerName: string) => {
     if (!clientId) return;
     if (!window.confirm(`${playerName} をプレイヤー一覧から削除します。よろしいですか？`)) return;
@@ -215,6 +308,10 @@ function App() {
     sendMessage({ type: "set_fallback_mode", enabled });
   };
 
+  const setTurnMode = (mode: TurnMode) => {
+    sendMessage({ type: "set_turn_mode", mode });
+  };
+
   const rollForPlayer = (playerId: string) => {
     if (!playerId) return;
     sendMessage({ type: "host_player_roll", playerId });
@@ -223,6 +320,24 @@ function App() {
   const chooseForPlayer = (playerId: string, choiceId: string) => {
     if (!playerId) return;
     sendMessage({ type: "host_player_choice", playerId, choiceId });
+  };
+
+  const continueYearRecap = () => {
+    sendMessage({ type: "continue_year_recap" });
+  };
+
+  const getEventForFallbackPlayer = (playerId: string) => {
+    if (state.mode === "life_map") return state.currentEvent;
+    return state.activeTurnEvents?.[playerId] ?? state.currentEvent;
+  };
+
+  const getVisibleChoicesForFallbackPlayer = (playerId: string) => {
+    const event = getEventForFallbackPlayer(playerId);
+    if (!event) return [];
+    const playerChoiceIds = state.availableChoiceIdsByPlayer?.[playerId] ?? state.availableChoiceIds;
+    const availableIds = new Set(playerChoiceIds);
+    if (availableIds.size === 0) return event.choices;
+    return event.choices.filter((choice) => availableIds.has(choice.id));
   };
 
   const openDisplay = () => {
@@ -281,6 +396,10 @@ function App() {
         <p>
           48か月のキャンパスカレンダーを進みながら、大学4年間の選択を全員で見比べるモードです。
         </p>
+        <HostJourneyStrip
+          currentRound={state.currentRound}
+          mode={state.mode}
+        />
       </header>
 
       {/* ── Connection Panel ──────────────────────────────────────── */}
@@ -328,6 +447,11 @@ function App() {
             <span>
               モード: <strong>{state.mode === "life_map" ? "人生マップ" : "48か月ボード"}</strong>
             </span>
+            {state.mode !== "life_map" && (
+              <span>
+                回答方式: <strong>{formatTurnMode(turnMode)}</strong>
+              </span>
+            )}
             <span>
               <strong>{roundInfo.label}</strong>
             </span>
@@ -353,6 +477,111 @@ function App() {
                 現在のプレイヤー: <strong>{currentPlayer.name}</strong>
               </span>
             )}
+            {state.mode !== "life_map" && activeTurnPlayers.length > 0 && (
+              <span>
+                現在のターン: <strong>{formatTurnGroupLabel(activeTurnPlayers)}</strong>
+              </span>
+            )}
+            {state.mode !== "life_map" && activeTurnPlayers.length > 1 && (
+              <span>
+                選択待ち:{" "}
+                <strong>
+                  {activeWaitingPlayers.length > 0
+                    ? activeWaitingPlayers.map((player) => player.name).join(" / ")
+                    : "全員選択済み"}
+                </strong>
+              </span>
+            )}
+            {state.mode !== "life_map" && activeSubmittedPlayers.length > 0 && (
+              <span>
+                選択済み: <strong>{activeSubmittedPlayers.map((player) => player.name).join(" / ")}</strong>
+              </span>
+            )}
+          </div>
+        </section>
+      )}
+
+      {isInGame && state.mode !== "life_map" && state.lastTurnGroupResults && state.lastTurnGroupResults.length > 0 && (
+        <section className="panel">
+          <h2>直前の選択</h2>
+          <div className="players">
+            {state.lastTurnGroupResults.map((result, index) => (
+              <div key={`${result.playerId}-${result.choiceId}`} className="player-card">
+                <div className="player-card__header">
+                  <div className="player-name">
+                    <span
+                      className="player-color-dot"
+                      style={{ background: colorForPlayer(index) }}
+                    />
+                    {result.playerName}
+                  </div>
+                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                    {result.submittedBy === "host"
+                      ? "ホスト代理"
+                      : result.submittedBy === "display"
+                        ? "ディスプレイ代理"
+                        : "本人選択"}
+                  </span>
+                </div>
+                <p style={{ margin: "8px 0 0", color: "var(--text-primary)", fontWeight: 700 }}>
+                  {result.choiceLabel}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {state.phase === "year_recap" && state.yearRecap && (
+        <section className="panel" aria-live="polite">
+          <div className="host-ops-section-header">
+            <div>
+              <h2>{state.yearRecap.title}</h2>
+              <p style={{ margin: "6px 0 0", color: "var(--text-secondary)" }}>
+                {state.yearRecap.year}年目終了時点の状態です。
+              </p>
+            </div>
+            <button onClick={continueYearRecap}>
+              次の学年へ進む
+            </button>
+          </div>
+          <div className="players" style={{ marginTop: 16 }}>
+            {state.yearRecap.players.map((player, index) => (
+              <div key={player.playerId} className="player-card">
+                <div className="player-card__header">
+                  <div className="player-name">
+                    <span
+                      className="player-color-dot"
+                      style={{ background: colorForPlayer(index) }}
+                    />
+                    {player.playerName}
+                  </div>
+                  <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 800 }}>
+                    {player.creditStatus}
+                  </span>
+                </div>
+                <div className="player-stats">
+                  <span>📚 {player.credits}単位</span>
+                  <span>💰 {player.resources.money}</span>
+                  <span>❤️ {player.resources.health}</span>
+                  <span>🧠 {player.experience.intellect}</span>
+                  <span>🤝 {player.experience.connections}</span>
+                </div>
+                <p style={{ margin: "10px 0 0", color: "var(--text-primary)", fontWeight: 700 }}>
+                  卒業見込み: {player.graduationOutlook}
+                </p>
+                {player.strengths.length > 0 && (
+                  <p style={{ margin: "8px 0 0", color: "var(--text-secondary)" }}>
+                    強み: {player.strengths.join(" / ")}
+                  </p>
+                )}
+                {player.warningSigns.length > 0 && (
+                  <p style={{ margin: "6px 0 0", color: "var(--year-4)" }}>
+                    注意: {player.warningSigns.join(" / ")}
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
         </section>
       )}
@@ -412,17 +641,40 @@ function App() {
 
           {state.fallbackMode && (
             <div className="host-ops-fallback">
-              {currentPlayer && state.mode !== "life_map" && (
+              {state.mode !== "life_map" && activeTurnPlayers.length > 0 && (
                 <div className="host-ops-fallback-target">
-                  対象: <strong>{currentPlayer.name}</strong>
+                  対象: <strong>{formatTurnGroupLabel(activeTurnPlayers)}</strong>
                   <button
                     className="ghost"
-                    onClick={() => rollForPlayer(currentPlayer.id)}
-                    disabled={state.phase !== "rolling"}
+                    onClick={() => rollForPlayer(fallbackTargetPlayerId)}
+                    disabled={state.phase !== "rolling" || !fallbackTargetPlayerId}
                   >
                     代理で月イベントを開く
                   </button>
                 </div>
+              )}
+
+              {state.mode !== "life_map" && activeTurnPlayers.length > 1 && (
+                <label className="host-ops-player-select">
+                  代理送信するプレイヤー
+                  <select
+                    value={fallbackTargetPlayerId}
+                    onChange={(event) => setFallbackPlayerId(event.target.value)}
+                  >
+                    {activeTurnPlayers.map((player) => {
+                      const alreadySubmitted = Boolean(pendingTurnChoices[player.id]);
+                      return (
+                        <option
+                          key={player.id}
+                          value={player.id}
+                          disabled={alreadySubmitted}
+                        >
+                          {player.name}{alreadySubmitted ? "（選択済み）" : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
               )}
 
               {state.mode === "life_map" && (
@@ -448,7 +700,50 @@ function App() {
                 </label>
               )}
 
-              {state.currentEvent ? (
+              {state.mode !== "life_map" && activeTurnPlayers.length > 0 && (
+                <div className="host-ops-choice-list">
+                  <div className="host-ops-event-title">ボード選択の代理送信</div>
+                  {activeTurnPlayers.map((player) => {
+                    const event = getEventForFallbackPlayer(player.id);
+                    const choices = getVisibleChoicesForFallbackPlayer(player.id);
+                    const alreadySubmitted = Boolean(pendingTurnChoices[player.id]);
+                    return (
+                      <div
+                        key={player.id}
+                        className="player-card"
+                        style={{ flex: "1 1 260px", maxWidth: "100%" }}
+                      >
+                        <div className="player-card__header">
+                          <div className="player-name">{player.name}</div>
+                          <span style={{ fontSize: 12, color: alreadySubmitted ? "var(--accent)" : "var(--text-secondary)" }}>
+                            {alreadySubmitted ? "選択済み" : "未選択"}
+                          </span>
+                        </div>
+                        <div className="host-ops-event-title">
+                          {event?.title ?? "イベント待ち"}
+                        </div>
+                        <div className="host-ops-choice-list" style={{ marginTop: 10 }}>
+                          {choices.length === 0 && (
+                            <div className="placeholder">選択肢はまだありません。</div>
+                          )}
+                          {choices.map((choice) => (
+                            <button
+                              key={choice.id}
+                              className="host-ops-choice-button"
+                              onClick={() => chooseForPlayer(player.id, choice.id)}
+                              disabled={state.phase !== "choosing" || alreadySubmitted}
+                            >
+                              {choice.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {state.mode === "life_map" && state.currentEvent ? (
                 <div className="host-ops-choice-list">
                   <div className="host-ops-event-title">{state.currentEvent.title}</div>
                   {selectedFallbackPlayer && state.pendingLifeChoices?.[selectedFallbackPlayer.id] && (
@@ -479,10 +774,43 @@ function App() {
                   })}
                 </div>
               ) : (
-                <div className="placeholder">現在のイベントはありません。</div>
+                state.mode === "life_map" && (
+                  <div className="placeholder">現在のイベントはありません。</div>
+                )
               )}
             </div>
           )}
+        </section>
+      )}
+
+      {clientId && state.mode !== "life_map" && (
+        <section className="panel host-turn-mode-panel">
+          <div className="host-ops-section-header">
+            <h2>回答方式</h2>
+            {isInGame && (
+              <span className="host-turn-mode-panel__hint">
+                次のターングループから反映
+              </span>
+            )}
+          </div>
+          <div className="host-turn-mode-options" role="group" aria-label="回答方式">
+            <button
+              type="button"
+              className={turnMode === "pair" ? "host-turn-mode-option host-turn-mode-option--active" : "host-turn-mode-option"}
+              onClick={() => setTurnMode("pair")}
+            >
+              <strong>2人ずつ</strong>
+              <span>対比で見せる</span>
+            </button>
+            <button
+              type="button"
+              className={turnMode === "all" ? "host-turn-mode-option host-turn-mode-option--active" : "host-turn-mode-option"}
+              onClick={() => setTurnMode("all")}
+            >
+              <strong>全員一斉</strong>
+              <span>全員の選択を並べる</span>
+            </button>
+          </div>
         </section>
       )}
 
@@ -494,7 +822,7 @@ function App() {
             <div className="placeholder">まだ参加者はいません。</div>
           )}
           {state.players.map((player, index) => {
-            const isTurn = currentPlayer?.id === player.id;
+            const isTurn = activeTurnPlayerIdSet.has(player.id) || currentPlayer?.id === player.id;
             return (
               <div
                 key={player.id}
@@ -510,7 +838,7 @@ function App() {
                     {isTurn && (
                       <span style={{ fontSize: 12, color: "var(--accent)" }}>
                         {" "}
-                        (今の番)
+                        {pendingTurnChoices[player.id] ? "(選択済み)" : "(今の番)"}
                       </span>
                     )}
                     {!player.online && (
@@ -579,6 +907,14 @@ function App() {
             <button className="ghost" onClick={openOneController}>
               コントローラーを追加
             </button>
+            {state.phase !== "result" && (
+              <button
+                onClick={endGame}
+                style={{ background: "var(--year-2)", color: "#132033" }}
+              >
+                ゲームを終了して結果を見る
+              </button>
+            )}
             <button
               onClick={resetGame}
               style={{ background: "#dc2626", color: "#fff" }}
@@ -591,8 +927,8 @@ function App() {
 
       {/* ── Debug Panel ──────────────────────────────────────────── */}
       {clientId && (
-        <section className="panel" style={{ borderLeft: "3px solid var(--year-2)" }}>
-          <h2>デバッグモード（PC1台でテスト）</h2>
+        <details className="panel host-debug-panel">
+          <summary>開発用テスト</summary>
           <p style={{ fontSize: 14, color: "var(--muted)", margin: "0 0 12px" }}>
             全画面を別ウィンドウで開きます。コントローラーで名前を入れて参加してください。
           </p>
@@ -622,7 +958,7 @@ function App() {
               </a>
             </div>
           )}
-        </section>
+        </details>
       )}
     </div>
   );

@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "events:check": "node scripts/validate-events.mjs",
+    "sim:random": "node scripts/random-playthrough.mjs",
     "start": "node server/index.js",
     "preview": "vite preview"
   },
