@@ -143,6 +143,7 @@ export interface GameEvent {
   polarity?: "positive" | "negative" | "mixed";
   condition?: ChoiceCondition;
   choices: EventChoice[];
+  choiceMode?: "simultaneous" | "sequential";
   /** Alternative choice sets based on player flags/stats */
   conditionalVariants?: ConditionalVariant[];
 }
@@ -241,7 +242,7 @@ export function getRoundInfo(round: number): RoundInfo {
 // ─── Game State ───────────────────────────────────────────────────
 export type GameMode = "board" | "life_map";
 
-export type GamePhase = "lobby" | "rolling" | "choosing" | "animating" | "result";
+export type GamePhase = "lobby" | "rolling" | "choosing" | "animating" | "revealed" | "result";
 
 export type LifeTraitKey =
   | "academic"
@@ -340,6 +341,7 @@ export interface GameState {
   lifePlayerPositions?: Record<string, string>;
   lifePlayerRoutes?: Record<string, string[]>;
   pendingLifeChoices?: Record<string, string>;
+  currentChoiceMode?: "simultaneous" | "sequential";
 }
 
 export interface ChoiceResult {
@@ -435,6 +437,10 @@ export type ServerMessage =
       type: "choice_result";
       result: ChoiceResult;
     }
+  | {
+      type: "all_choices_revealed";
+      results: ChoiceResult[];
+    }
   | { type: "round_end"; round: number; roundInfo: RoundInfo }
   | { type: "player_removed"; playerId: string; playerName: string }
   | { type: "game_result"; results: PlayerResult[] };
@@ -448,6 +454,8 @@ export type ClientMessage =
   | { type: "set_fallback_mode"; enabled: boolean }
   | { type: "host_player_roll"; playerId: string }
   | { type: "host_player_choice"; playerId: string; choiceId: string }
+  | { type: "host_force_advance_choices" }
+  | { type: "host_advance_after_reveal" }
   | { type: "player_roll" }
   | { type: "player_choice"; choiceId: string }
   | { type: "request_state" };

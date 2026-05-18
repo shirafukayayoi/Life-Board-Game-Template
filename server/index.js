@@ -159,6 +159,8 @@ function defaultGameState() {
     lifePlayerPositions: {},
     lifePlayerRoutes: {},
     pendingLifeChoices: {},
+    pendingLifeResults: {},
+    currentChoiceMode: "sequential",
   };
 }
 
@@ -823,6 +825,8 @@ function presentTimelineEvent() {
   state.currentEvent = publicEvent;
   state.availableChoiceIds = publicEvent.choices.map((choice) => choice.id);
   state.pendingLifeChoices = {};
+  state.pendingLifeResults = {};
+  state.currentChoiceMode = event.choiceMode ?? "sequential";
   state.lastChoiceResult = null;
   state.turnStartedAt = Date.now();
   setLifePlayersAtSquare(getSeasonHubSquareId(event));
@@ -859,14 +863,22 @@ function processTimelineChoice(player, choiceId, submittedBy = "controller") {
     storyTags: choice.storyTags,
   };
   state.lastChoiceResult = result;
+  state.pendingLifeResults[player.id] = result;
   recordChoiceHistory(player, event, choice, visibleEffects, choice.flagEffects ?? choice.setFlags, submittedBy);
-  broadcast({ type: "choice_result", result });
 
-  if (tryAdvanceTimelineEvent(event)) {
-    return;
+  if (state.currentChoiceMode === "simultaneous") {
+    // 一斉モード: 全員揃うまで結果を隠す
+    if (tryAdvanceTimelineEvent(event)) {
+      return;
+    }
+    broadcastState();
+  } else {
+    broadcast({ type: "choice_result", result });
+    if (tryAdvanceTimelineEvent(event)) {
+      return;
+    }
+    broadcastState();
   }
-
-  broadcastState();
 }
 
 function tryAdvanceTimelineEvent(event = getCurrentTimelineEvent()) {
@@ -880,6 +892,16 @@ function tryAdvanceTimelineEvent(event = getCurrentTimelineEvent()) {
     return false;
   }
 
+  if (state.currentChoiceMode === "simultaneous") {
+    // 一斉モード: 結果開示フェーズに移行し、ホストの確認を待つ
+    const results = activePlayerIds.map((playerId) => state.pendingLifeResults[playerId]).filter(Boolean);
+    state.phase = "revealed";
+    broadcast({ type: "all_choices_revealed", results });
+    broadcastState();
+    return true;
+  }
+
+  // 個別モード: 即座に次のイベントへ
   state.lifePlayers = state.lifePlayers.map((lifePlayer) => {
     const selectedId = state.pendingLifeChoices[lifePlayer.id];
     const selectedChoice = event.choices.find((c) => c.id === selectedId);
@@ -894,6 +916,26 @@ function tryAdvanceTimelineEvent(event = getCurrentTimelineEvent()) {
   }
   presentTimelineEvent();
   return true;
+}
+
+function advanceAfterReveal() {
+  if (state.mode !== "life_map" || state.phase !== "revealed") return;
+  const event = getCurrentTimelineEvent();
+  if (!event) return;
+
+  state.lifePlayers = state.lifePlayers.map((lifePlayer) => {
+    const selectedId = state.pendingLifeChoices[lifePlayer.id];
+    const selectedChoice = event.choices.find((c) => c.id === selectedId);
+    if (!selectedChoice) return lifePlayer;
+    return applyTimelineChoice(lifePlayer, event, selectedChoice);
+  });
+
+  state.currentSeasonIndex += 1;
+  if (state.currentSeasonIndex >= TIMELINE_EVENTS.length) {
+    endTimelineGame();
+    return;
+  }
+  presentTimelineEvent();
 }
 
 function endTimelineGame() {
@@ -1486,6 +1528,33 @@ wss.on("connection", (socket) => {
       const targetPlayer = state.players.find((player) => player.id === payload.playerId);
       if (!targetPlayer) return;
       submitChoiceForPlayer(targetPlayer, payload.choiceId, "host");
+      return;
+    }
+
+    // ─── host_force_advance_choices ────────────────────────────
+    if (payload.type === "host_force_advance_choices") {
+      if (client.role !== "host" || client.id !== hostId) return;
+      if (state.mode !== "life_map" || state.phase !== "choosing") return;
+      if (state.currentChoiceMode !== "simultaneous") return;
+
+      const firstChoiceId = state.availableChoiceIds[0];
+      if (!firstChoiceId) return;
+
+      const activePlayerIds = state.players.filter((p) => p.online).map((p) => p.id);
+      for (const playerId of activePlayerIds) {
+        if (!state.pendingLifeChoices[playerId]) {
+          const player = state.players.find((p) => p.id === playerId);
+          if (player) submitChoiceForPlayer(player, firstChoiceId, "host_force");
+        }
+      }
+      return;
+    }
+
+    // ─── host_advance_after_reveal ─────────────────────────────
+    if (payload.type === "host_advance_after_reveal") {
+      if (client.role !== "host" || client.id !== hostId) return;
+      if (state.mode !== "life_map" || state.phase !== "revealed") return;
+      advanceAfterReveal();
       return;
     }
 

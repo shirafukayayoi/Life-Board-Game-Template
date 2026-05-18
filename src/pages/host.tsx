@@ -225,6 +225,14 @@ function App() {
     sendMessage({ type: "host_player_choice", playerId, choiceId });
   };
 
+  const forceAdvanceChoices = () => {
+    sendMessage({ type: "host_force_advance_choices" });
+  };
+
+  const advanceAfterReveal = () => {
+    sendMessage({ type: "host_advance_after_reveal" });
+  };
+
   const openDisplay = () => {
     window.open(displayUrl, "_blank");
   };
@@ -409,6 +417,37 @@ function App() {
               フォールバックモード
             </label>
           </div>
+
+          {/* 一斉モード進行コントロール */}
+          {state.mode === "life_map" && state.currentChoiceMode === "simultaneous" && (
+            <div className="host-ops-simultaneous">
+              {state.phase === "choosing" && (
+                <div className="host-ops-simultaneous-status">
+                  <div className="host-ops-simultaneous-count">
+                    {Object.keys(state.pendingLifeChoices ?? {}).length} /{" "}
+                    {state.players.filter((p) => p.online).length} 人が選択済み
+                  </div>
+                  <button
+                    className="host-ops-force-advance"
+                    onClick={forceAdvanceChoices}
+                  >
+                    強制進行（未選択者をスキップ）
+                  </button>
+                </div>
+              )}
+              {state.phase === "revealed" && (
+                <div className="host-ops-simultaneous-status">
+                  <div className="host-ops-simultaneous-count">全員の選択が開示されました</div>
+                  <button
+                    className="host-ops-next-event"
+                    onClick={advanceAfterReveal}
+                  >
+                    次のイベントへ進む
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {state.fallbackMode && (
             <div className="host-ops-fallback">
