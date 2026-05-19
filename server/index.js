@@ -32,6 +32,9 @@ import { writeSessionLog } from "./sessionLogger.js";
 const PORT = Number(process.env.PORT ?? 4173);
 const STATIC_DIR = process.env.STATIC_DIR ?? "dist";
 
+// Cloudflare Tunnel などで注入される公開URL（start-game.mjs が POST /admin/tunnel-url で設定）
+let publicTunnelUrl = process.env.PUBLIC_URL ?? null;
+
 const RESOURCE_KEYS = ["time", "money", "credits", "health"];
 const EXPERIENCE_KEYS = ["intellect", "connections", "work_tolerance", "action_power", "romance_exp"];
 
@@ -159,6 +162,9 @@ function defaultGameState() {
     lifePlayerPositions: {},
     lifePlayerRoutes: {},
     pendingLifeChoices: {},
+    pendingLifeResults: {},
+    currentChoiceMode: "sequential",
+    choicePhilosophy: "equal",
   };
 }
 
@@ -195,7 +201,18 @@ function getHostUrls() {
       }
     });
   });
+  // トンネルURLが設定されている場合は先頭に追加（ホストUIで優先表示される）
+  if (publicTunnelUrl) urls.add(publicTunnelUrl);
   return Array.from(urls);
+}
+
+function broadcastHostUrls() {
+  const urls = getHostUrls();
+  for (const [socket, client] of sockets.entries()) {
+    if (socket.readyState === socket.OPEN && client.role === "host") {
+      socket.send(JSON.stringify({ type: "welcome", clientId: client.id, hostId, urls }));
+    }
+  }
 }
 
 function broadcast(payload) {
@@ -823,6 +840,8 @@ function presentTimelineEvent() {
   state.currentEvent = publicEvent;
   state.availableChoiceIds = publicEvent.choices.map((choice) => choice.id);
   state.pendingLifeChoices = {};
+  state.pendingLifeResults = {};
+  state.currentChoiceMode = event.choiceMode ?? "sequential";
   state.lastChoiceResult = null;
   state.turnStartedAt = Date.now();
   setLifePlayersAtSquare(getSeasonHubSquareId(event));
@@ -859,14 +878,22 @@ function processTimelineChoice(player, choiceId, submittedBy = "controller") {
     storyTags: choice.storyTags,
   };
   state.lastChoiceResult = result;
+  state.pendingLifeResults[player.id] = result;
   recordChoiceHistory(player, event, choice, visibleEffects, choice.flagEffects ?? choice.setFlags, submittedBy);
-  broadcast({ type: "choice_result", result });
 
-  if (tryAdvanceTimelineEvent(event)) {
-    return;
+  if (state.currentChoiceMode === "simultaneous") {
+    // 一斉モード: 全員揃うまで結果を隠す
+    if (tryAdvanceTimelineEvent(event)) {
+      return;
+    }
+    broadcastState();
+  } else {
+    broadcast({ type: "choice_result", result });
+    if (tryAdvanceTimelineEvent(event)) {
+      return;
+    }
+    broadcastState();
   }
-
-  broadcastState();
 }
 
 function tryAdvanceTimelineEvent(event = getCurrentTimelineEvent()) {
@@ -880,11 +907,21 @@ function tryAdvanceTimelineEvent(event = getCurrentTimelineEvent()) {
     return false;
   }
 
+  if (state.currentChoiceMode === "simultaneous") {
+    // 一斉モード: 結果開示フェーズに移行し、ホストの確認を待つ
+    const results = activePlayerIds.map((playerId) => state.pendingLifeResults[playerId]).filter(Boolean);
+    state.phase = "revealed";
+    broadcast({ type: "all_choices_revealed", results });
+    broadcastState();
+    return true;
+  }
+
+  // 個別モード: 即座に次のイベントへ
   state.lifePlayers = state.lifePlayers.map((lifePlayer) => {
     const selectedId = state.pendingLifeChoices[lifePlayer.id];
     const selectedChoice = event.choices.find((c) => c.id === selectedId);
     if (!selectedChoice) return lifePlayer;
-    return applyTimelineChoice(lifePlayer, event, selectedChoice);
+    return applyTimelineChoice(lifePlayer, event, selectedChoice, state.choicePhilosophy);
   });
 
   state.currentSeasonIndex += 1;
@@ -894,6 +931,26 @@ function tryAdvanceTimelineEvent(event = getCurrentTimelineEvent()) {
   }
   presentTimelineEvent();
   return true;
+}
+
+function advanceAfterReveal() {
+  if (state.mode !== "life_map" || state.phase !== "revealed") return;
+  const event = getCurrentTimelineEvent();
+  if (!event) return;
+
+  state.lifePlayers = state.lifePlayers.map((lifePlayer) => {
+    const selectedId = state.pendingLifeChoices[lifePlayer.id];
+    const selectedChoice = event.choices.find((c) => c.id === selectedId);
+    if (!selectedChoice) return lifePlayer;
+    return applyTimelineChoice(lifePlayer, event, selectedChoice, state.choicePhilosophy);
+  });
+
+  state.currentSeasonIndex += 1;
+  if (state.currentSeasonIndex >= TIMELINE_EVENTS.length) {
+    endTimelineGame();
+    return;
+  }
+  presentTimelineEvent();
 }
 
 function endTimelineGame() {
@@ -1408,6 +1465,7 @@ wss.on("connection", (socket) => {
         player.flagHistory = [];
         player.choiceHistory = [];
       }
+      state.choicePhilosophy = payload.philosophy ?? "equal";
       state.lifePlayers = state.players.map((player) => createTimelinePlayer(player.id, player.name));
       state.lifeMapSquares = PUBLIC_LIFE_MAP_SQUARES;
       state.lifePlayerPositions = Object.fromEntries(
@@ -1489,6 +1547,33 @@ wss.on("connection", (socket) => {
       return;
     }
 
+    // ─── host_force_advance_choices ────────────────────────────
+    if (payload.type === "host_force_advance_choices") {
+      if (client.role !== "host" || client.id !== hostId) return;
+      if (state.mode !== "life_map" || state.phase !== "choosing") return;
+      if (state.currentChoiceMode !== "simultaneous") return;
+
+      const firstChoiceId = state.availableChoiceIds[0];
+      if (!firstChoiceId) return;
+
+      const activePlayerIds = state.players.filter((p) => p.online).map((p) => p.id);
+      for (const playerId of activePlayerIds) {
+        if (!state.pendingLifeChoices[playerId]) {
+          const player = state.players.find((p) => p.id === playerId);
+          if (player) submitChoiceForPlayer(player, firstChoiceId, "host_force");
+        }
+      }
+      return;
+    }
+
+    // ─── host_advance_after_reveal ─────────────────────────────
+    if (payload.type === "host_advance_after_reveal") {
+      if (client.role !== "host" || client.id !== hostId) return;
+      if (state.mode !== "life_map" || state.phase !== "revealed") return;
+      advanceAfterReveal();
+      return;
+    }
+
     // ─── player_roll ───────────────────────────────────────────
     if (payload.type === "player_roll") {
       if (client.role !== "controller") return;
@@ -1553,6 +1638,29 @@ wss.on("connection", (socket) => {
 
     broadcastState();
   });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  Admin Endpoints (localhost only)
+// ═══════════════════════════════════════════════════════════════════
+
+app.use(express.json());
+
+// start-game.mjs がCloudflare TunnelのURLをここにPOSTする
+app.post("/admin/tunnel-url", (req, res) => {
+  const ip = req.socket.remoteAddress ?? "";
+  const isLocal = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+  if (!isLocal) { res.status(403).json({ error: "localhost only" }); return; }
+
+  const { url } = req.body ?? {};
+  if (!url || typeof url !== "string" || !url.startsWith("https://")) {
+    res.status(400).json({ error: "invalid url" }); return;
+  }
+
+  publicTunnelUrl = url;
+  broadcastHostUrls();
+  console.log(`\n🌐 Tunnel URL set: ${url}\n`);
+  res.json({ ok: true, url });
 });
 
 // ═══════════════════════════════════════════════════════════════════

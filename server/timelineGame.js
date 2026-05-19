@@ -214,8 +214,40 @@ export function getChoicePreview(choice) {
   };
 }
 
-export function applyTimelineChoice(player, seasonEvent, choice) {
-  const normalizedEffects = normalizeChoiceEffects(choice.effects ?? {});
+// 学期シーズンを event.id から取得 ("year1-autumn" → "autumn")
+function getSeasonFromEventId(eventId) {
+  return eventId?.split("-")[1] ?? "";
+}
+
+export function applyTimelineChoice(player, seasonEvent, choice, philosophy = "equal") {
+  let effects;
+
+  if (philosophy === "realistic") {
+    // 正規化なし・生値をそのまま適用。単位は増えるだけで減らない
+    effects = {};
+    for (const [key, value] of Object.entries(choice.effects ?? {})) {
+      if (!LIFE_TRAIT_KEYS.includes(key) || typeof value !== "number" || value === 0) continue;
+      effects[key] = key === "academic" ? Math.max(0, value) : value;
+    }
+  } else {
+    // equal モード: 正規化で全選択肢の合計値を均等化
+    effects = normalizeChoiceEffects(choice.effects ?? {});
+
+    // 単位は減らない（等価体験モードでも現実と同様）
+    const normalizedAcademic = effects.academic ?? 0;
+
+    // 秋・冬は学業シーズン: 正規化後に academic が 0 以下なら +1 のフロアを与える
+    // （「勉強ゼロの学期」でも大学生として多少は単位が積まれる）
+    const season = getSeasonFromEventId(seasonEvent.id);
+    const studySeason = season === "autumn" || season === "winter";
+    const academicFloor = studySeason ? 1 : 0;
+    if (normalizedAcademic !== 0) {
+      effects = { ...effects, academic: Math.max(0, normalizedAcademic) };
+    } else if (studySeason) {
+      effects = { ...effects, academic: academicFloor };
+    }
+  }
+
   const next = {
     ...player,
     traits: { ...player.traits },
@@ -223,7 +255,7 @@ export function applyTimelineChoice(player, seasonEvent, choice) {
     history: [...player.history],
   };
 
-  for (const [key, delta] of Object.entries(normalizedEffects)) {
+  for (const [key, delta] of Object.entries(effects)) {
     next.traits[key] = clampTrait((next.traits[key] ?? 0) + delta);
   }
 
