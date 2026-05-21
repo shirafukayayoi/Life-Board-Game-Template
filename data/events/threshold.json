@@ -59,14 +59,14 @@
   },
   "単位回収": {
     "id": "単位回収",
-    "title": "単位回収チャンス",
-    "description": "卒業までのペースが少し遅れている。補講や集中講義で立て直す。",
-    "category": "挽回",
+    "title": "教務課で履修相談",
+    "description": "卒業までのペースが大きく遅れている。補講や集中講義をどう使うか決める。",
+    "category": "履修",
     "effectBudgetTarget": 3,
     "choices": [
       {
         "id": "単位回収A",
-        "label": "集中講義で一気に回収する",
+        "label": "集中講義を入れて帳尻を合わせる",
         "effects": {
           "time": -1,
           "credits": 6
@@ -74,7 +74,7 @@
       },
       {
         "id": "単位回収B",
-        "label": "教授に相談して提出物を整える",
+        "label": "教授に相談して再提出を整える",
         "effects": {
           "credits": 4,
           "intellect": 1
@@ -82,7 +82,7 @@
       },
       {
         "id": "単位回収C",
-        "label": "友達と補講を乗り切る",
+        "label": "友達と補講の予定を組む",
         "effects": {
           "credits": 3,
           "connections": 2

@@ -80,6 +80,13 @@ const TURN_GROUP_SIZE = 2;
 const TURN_MODES = new Set(["pair", "all"]);
 const TURN_GROUP_RESULT_MS = Number(process.env.TURN_GROUP_RESULT_MS ?? 1500);
 const SEMESTER_CREDIT_BONUS = 10;
+const CREDIT_AUDIT_ROUNDS = new Set([6, 12, 18, 24, 30, 36, 42, 48]);
+const CREDIT_AUDIT_GRACE_GAP = 3;
+const CREDIT_AUDIT_MAX_BONUS = 5;
+const YEAR_END_CREDIT_AUDIT_MAX_BONUS = 7;
+const FINAL_CREDIT_AUDIT_FLOOR = 119;
+const CREDIT_RECOVERY_EVENT_MIN_ROUND = 14;
+const CREDIT_RECOVERY_EVENT_GAP = 18;
 const YEAR_RECAP_ROUNDS = new Set([12, 24, 36]);
 const RECOVERY_COOLDOWN_ROUNDS = 3;
 const RECOVERY_MAX_PER_STAT_PER_YEAR = 1;
@@ -166,6 +173,11 @@ function getRoundInfo(round) {
     season,
     label: `${year}年 ${month}月（${SEASON_LABELS[season]}）`,
   };
+}
+
+function expectedCreditsForRound(round) {
+  return CREDIT_CHECKPOINTS[round]
+    ?? Math.round((Math.max(1, Math.min(BOARD_FINAL_ROUND, round)) / BOARD_FINAL_ROUND) * CREDIT_CHECKPOINTS[48]);
 }
 
 function defaultResources() {
@@ -676,7 +688,7 @@ function checkThresholdEvents(player) {
   const res = player.resources;
 
   let result = null;
-  const expectedCredits = Math.floor((state.currentRound / BOARD_FINAL_ROUND) * CREDIT_CHECKPOINTS[48]);
+  const expectedCredits = expectedCreditsForRound(state.currentRound);
 
   // 0.5. A rare leave-of-absence branch when health has stayed low.
   if (!player.flags.on_leave && state.currentRound >= 13 && res.health <= 4 && Math.random() < 0.04) {
@@ -686,8 +698,11 @@ function checkThresholdEvents(player) {
   else if (res.time < 4 && Math.random() < 0.5) {
     result = THRESHOLD_EVENTS["緊急入院"];
   }
-  // 1.5 credits are far behind the graduation pace -> recovery class
-  else if (state.currentRound >= 7 && res.credits < expectedCredits - 9.5) {
+  // 1.5 credits are critically behind the graduation pace -> formal academic advising
+  else if (
+    state.currentRound >= CREDIT_RECOVERY_EVENT_MIN_ROUND
+    && res.credits < expectedCredits - CREDIT_RECOVERY_EVENT_GAP
+  ) {
     result = THRESHOLD_EVENTS["単位回収"];
   }
   // 2. time < 6 AND random < 0.2 -> ryuunen crisis
@@ -1850,7 +1865,7 @@ function graduationOutlookFor(credits, round) {
 
 function buildYearRecap(finishedRound) {
   const year = Math.ceil(finishedRound / 12);
-  const expectedCredits = CREDIT_CHECKPOINTS[finishedRound] ?? Math.round((finishedRound / BOARD_FINAL_ROUND) * CREDIT_CHECKPOINTS[48]);
+  const expectedCredits = expectedCreditsForRound(finishedRound);
   return {
     year,
     round: finishedRound,
@@ -1867,6 +1882,40 @@ function buildYearRecap(finishedRound) {
       experience: { ...player.experience },
     })),
   };
+}
+
+function applyCreditAudit(finishedRound) {
+  if (!CREDIT_AUDIT_ROUNDS.has(finishedRound)) return [];
+
+  const expectedCredits = expectedCreditsForRound(finishedRound);
+  const maxBonus = YEAR_RECAP_ROUNDS.has(finishedRound)
+    ? YEAR_END_CREDIT_AUDIT_MAX_BONUS
+    : CREDIT_AUDIT_MAX_BONUS;
+  const adjustments = [];
+
+  for (const player of state.players) {
+    const deficit = expectedCredits - player.resources.credits;
+    if (
+      finishedRound === BOARD_FINAL_ROUND
+      && player.resources.credits >= FINAL_CREDIT_AUDIT_FLOOR
+      && deficit > 0
+    ) {
+      player.resources.credits = clampResource("credits", player.resources.credits + deficit);
+      adjustments.push({ playerName: player.name, bonus: deficit });
+      continue;
+    }
+
+    if (deficit <= CREDIT_AUDIT_GRACE_GAP) continue;
+
+    const bonus = Math.min(
+      maxBonus,
+      Math.max(1, Math.ceil((deficit - CREDIT_AUDIT_GRACE_GAP) / 2)),
+    );
+    player.resources.credits = clampResource("credits", player.resources.credits + bonus);
+    adjustments.push({ playerName: player.name, bonus });
+  }
+
+  return adjustments;
 }
 
 /**
@@ -1886,6 +1935,19 @@ function endRound() {
     broadcast({
       type: "system",
       message: `学期末の履修整理で全員に${SEMESTER_CREDIT_BONUS}単位が入りました。`,
+    });
+  }
+
+  const creditAdjustments = applyCreditAudit(finishedRound);
+  if (creditAdjustments.length > 0) {
+    const names = creditAdjustments
+      .slice(0, 3)
+      .map((entry) => `${entry.playerName}+${entry.bonus}`)
+      .join("、");
+    const suffix = creditAdjustments.length > 3 ? ` ほか${creditAdjustments.length - 3}人` : "";
+    broadcast({
+      type: "system",
+      message: `履修確認で遅れを調整しました（${names}${suffix}単位）。`,
     });
   }
 

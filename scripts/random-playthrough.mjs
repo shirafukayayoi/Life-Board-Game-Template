@@ -72,9 +72,11 @@ function rate(count, total) {
 
 function validateAfterTargets(summary) {
   const playerCount = summary.totals.playerResults;
+  const choiceResultCount = summary.totals.choiceResultsSeen;
   const romanticRate = rate(countFor(summary.lifeArchetypes, "恋愛も大事にした人"), playerCount);
   const studyingAbroadRate = rate(summary.flags.studyingAbroad, playerCount);
   const onLeaveRate = rate(summary.flags.onLeave, playerCount);
+  const creditRecoveryEventRate = rate(summary.totals.creditRecoveryEventsSeen, choiceResultCount);
   const failures = [];
 
   const checks = [
@@ -111,6 +113,10 @@ function validateAfterTargets(summary) {
     [
       summary.balanceSignals.recoveryChoiceRate <= 0.09,
       `recoveryChoiceRate ${summary.balanceSignals.recoveryChoiceRate} is above 0.09`,
+    ],
+    [
+      creditRecoveryEventRate <= 0.055,
+      `creditRecoveryEventRate ${creditRecoveryEventRate} is above 0.055`,
     ],
   ];
 
@@ -443,6 +449,7 @@ function summarize(runs, options) {
   const shortHistoryPlayers = [];
   const longHistoryPlayers = [];
   let graduated = 0;
+  let creditRecoveryEventsSeen = 0;
 
   for (const result of allResults) {
     addCount(endingCounts, result.ending?.title ?? result.ending?.id ?? "unknown");
@@ -476,6 +483,9 @@ function summarize(runs, options) {
       addCount(eventCounts, entry.eventTitle);
       addCount(choiceCounts, entry.choiceLabel);
       addCount(choiceByEventCounts, `${entry.eventTitle} -> ${entry.choiceLabel}`);
+      if (entry.eventId === "単位回収") {
+        creditRecoveryEventsSeen += 1;
+      }
       for (const tag of entry.intentTags ?? []) {
         addCount(intentTagCounts, tag);
       }
@@ -503,6 +513,7 @@ function summarize(runs, options) {
       playerResults: playerCount,
       choiceResultsSeen: runs.reduce((total, run) => total + run.choiceResults, 0),
       recoveryEventsSeen: runs.reduce((total, run) => total + run.recoveryEventsSeen, 0),
+      creditRecoveryEventsSeen,
       yearRecapsSeen: runs.reduce((total, run) => total + run.yearRecapsSeen, 0),
     },
     endings: topEntries(endingCounts, 20),
@@ -515,6 +526,13 @@ function summarize(runs, options) {
       maxLifeArchetypePass: maxLifeArchetypeShare === null ? null : maxLifeArchetypeShare <= 0.35,
       recoveryChoiceRate,
       recoveryChoiceRatePass: recoveryChoiceRate === null ? null : recoveryChoiceRate <= 0.15,
+      creditRecoveryEventRate: runs.reduce((total, run) => total + run.choiceResults, 0) === 0
+        ? null
+        : Number((creditRecoveryEventsSeen
+          / runs.reduce((total, run) => total + run.choiceResults, 0)).toFixed(3)),
+      creditRecoveryEventRatePass: runs.reduce((total, run) => total + run.choiceResults, 0) === 0
+        ? null
+        : creditRecoveryEventsSeen / runs.reduce((total, run) => total + run.choiceResults, 0) <= 0.055,
     },
     graduationRate: playerCount === 0 ? null : Number((graduated / playerCount).toFixed(3)),
     resources: {
