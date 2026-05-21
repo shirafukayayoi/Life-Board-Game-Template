@@ -693,6 +693,23 @@ export function wsUrlFromInput(input: string) {
 }
 
 export function choosePrimaryHostUrl(urls: string[]) {
+  const publicUrl = urls.find((url) => {
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname;
+      const isPrivateLan =
+        host.startsWith("192.168.") ||
+        host.startsWith("10.") ||
+        host.startsWith("172.") ||
+        host === "localhost" ||
+        host === "127.0.0.1";
+      return parsed.protocol === "https:" && !isPrivateLan;
+    } catch {
+      return false;
+    }
+  });
+  if (publicUrl) return publicUrl;
+
   const lan = urls.find((url) => {
     try {
       const host = new URL(url).hostname;

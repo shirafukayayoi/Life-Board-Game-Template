@@ -37,6 +37,7 @@ import { writeSessionLog } from "./sessionLogger.js";
 
 const PORT = Number(process.env.PORT ?? 4173);
 const STATIC_DIR = process.env.STATIC_DIR ?? "dist";
+let publicTunnelUrl = process.env.PUBLIC_URL ?? null;
 
 const RESOURCE_KEYS = ["time", "money", "credits", "health"];
 const EXPERIENCE_KEYS = ["intellect", "connections", "work_tolerance", "action_power", "romance_exp"];
@@ -257,7 +258,11 @@ const playerAuth = new Map();
 // ═══════════════════════════════════════════════════════════════════
 
 function getHostUrls() {
-  const urls = new Set([`http://localhost:${PORT}`]);
+  const urls = new Set();
+  if (publicTunnelUrl) {
+    urls.add(publicTunnelUrl);
+  }
+  urls.add(`http://localhost:${PORT}`);
   const nets = os.networkInterfaces();
   Object.values(nets).forEach((entries) => {
     entries?.forEach((entry) => {
@@ -267,6 +272,14 @@ function getHostUrls() {
     });
   });
   return Array.from(urls);
+}
+
+function broadcastHostUrls() {
+  const urls = getHostUrls();
+  for (const [socket, client] of sockets.entries()) {
+    if (socket.readyState !== socket.OPEN || client.role !== "host" || !client.id) continue;
+    sendTo(socket, { type: "welcome", clientId: client.id, hostId, urls });
+  }
 }
 
 function broadcast(payload) {
@@ -2333,6 +2346,31 @@ wss.on("connection", (socket) => {
 // ═══════════════════════════════════════════════════════════════════
 //  Static File Serving
 // ═══════════════════════════════════════════════════════════════════
+
+app.use(express.json());
+
+app.post("/admin/tunnel-url", (req, res) => {
+  const remoteAddress = req.socket.remoteAddress ?? "";
+  const isLocalRequest =
+    remoteAddress === "127.0.0.1" ||
+    remoteAddress === "::1" ||
+    remoteAddress === "::ffff:127.0.0.1";
+  if (!isLocalRequest) {
+    res.status(403).json({ error: "localhost only" });
+    return;
+  }
+
+  const url = req.body?.url;
+  if (typeof url !== "string" || !url.startsWith("https://")) {
+    res.status(400).json({ error: "invalid url" });
+    return;
+  }
+
+  publicTunnelUrl = url.replace(/\/+$/, "");
+  broadcastHostUrls();
+  console.log(`Tunnel URL set: ${publicTunnelUrl}`);
+  res.json({ ok: true, url: publicTunnelUrl });
+});
 
 if (fs.existsSync(path.join(process.cwd(), STATIC_DIR))) {
   app.use(express.static(STATIC_DIR));

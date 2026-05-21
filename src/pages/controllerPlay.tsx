@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { createRoot } from "react-dom/client";
+import { generateResultCard } from "../utils/generateCard";
 import {
   Radar,
   RadarChart,
@@ -357,6 +358,82 @@ const S = {
     textAlign: "center" as const,
     marginBottom: 16,
   },
+  shareCard: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 14,
+    marginTop: 18,
+    padding: 14,
+    borderRadius: 14,
+    border: "1px solid #dbeafe",
+    background: "#eff6ff",
+  },
+  shareCardTitle: {
+    fontSize: 15,
+    fontWeight: 800,
+    color: "#1e3a8a",
+  },
+  shareCardText: {
+    marginTop: 3,
+    color: "#475569",
+    fontSize: 12,
+    lineHeight: 1.45,
+  },
+  shareCardStatus: {
+    marginTop: 6,
+    color: "#166534",
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  shareButton: (disabled = false) => ({
+    flexShrink: 0,
+    border: "none",
+    borderRadius: 12,
+    padding: "11px 16px",
+    background: disabled ? "#93c5fd" : "#2563eb",
+    color: "#fff",
+    boxShadow: "0 8px 18px rgba(37, 99, 235, 0.22)",
+    fontSize: 14,
+    fontWeight: 800,
+    cursor: disabled ? "default" : "pointer",
+  }),
+  resultCardGenerateButton: (disabled = false) => ({
+    width: "100%",
+    marginTop: 12,
+    justifyContent: "center",
+    opacity: disabled ? 0.7 : 1,
+  }),
+  resultCardOverlay: {
+    position: "fixed" as const,
+    inset: 0,
+    zIndex: 9999,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 18,
+    background: "rgba(10, 15, 31, 0.88)",
+  },
+  resultCardPreview: {
+    width: "min(100%, 420px)",
+    maxHeight: "92vh",
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    gap: 12,
+  },
+  resultCardPreviewText: {
+    margin: 0,
+    color: "#fff",
+    fontSize: 13,
+    textAlign: "center" as const,
+  },
+  resultCardPreviewImage: {
+    maxWidth: "100%",
+    maxHeight: "76vh",
+    borderRadius: 14,
+    boxShadow: "0 18px 60px rgba(0, 0, 0, 0.35)",
+  },
   // Tab bar
   tabBar: {
     display: "flex",
@@ -638,6 +715,8 @@ export function ControllerPlayPage() {
     useState<ChoiceResult | null>(null);
   const [gameResults, setGameResults] = useState<PlayerResult[] | null>(null);
   const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [cardImageUrl, setCardImageUrl] = useState<string | null>(null);
+  const [cardGenerating, setCardGenerating] = useState(false);
 
   // UI state
   const [confirmChoice, setConfirmChoice] = useState<string | null>(null);
@@ -1404,6 +1483,31 @@ export function ControllerPlayPage() {
     [buildShareText],
   );
 
+  const handleGenerateResultCard = useCallback(
+    async (result: PlayerResult) => {
+      const archetype = result.lifeArchetype ?? result.ending;
+      if (!archetype) return;
+
+      setCardGenerating(true);
+      setShareStatus(null);
+      try {
+        const imageUrl = await generateResultCard({
+          playerName: result.playerName,
+          archetypeId: archetype.id,
+          archetypeTitle: archetype.title,
+          archetypeDescription: result.summary ?? archetype.description,
+          storyTags: result.storyTags ?? [],
+        });
+        setCardImageUrl(imageUrl);
+      } catch {
+        setShareStatus("結果カードを作れませんでした");
+      } finally {
+        setCardGenerating(false);
+      }
+    },
+    [],
+  );
+
   const renderResult = () => {
     const results = gameResults;
     if (!results) return null;
@@ -1493,24 +1597,56 @@ export function ControllerPlayPage() {
             ))}
           </div>
         )}
-        <div className="share-card">
+        <div style={S.shareCard}>
           <div>
-            <div className="share-card__title">結果をシェア</div>
-            <div className="share-card__text">
+            <div style={S.shareCardTitle}>結果をシェア</div>
+            <div style={S.shareCardText}>
               名前、エンディング、順位、スコアを共有できます。
             </div>
             {shareStatus && (
-              <div className="share-card__status">{shareStatus}</div>
+              <div style={S.shareCardStatus}>{shareStatus}</div>
             )}
           </div>
           <button
-            className="share-card__button"
+            style={S.shareButton()}
             type="button"
             onClick={() => void handleShareResult(myResult)}
           >
             共有
           </button>
         </div>
+        <button
+          style={{ ...S.shareButton(cardGenerating), ...S.resultCardGenerateButton(cardGenerating) }}
+          type="button"
+          disabled={cardGenerating}
+          onClick={() => void handleGenerateResultCard(myResult)}
+        >
+          {cardGenerating ? "カード生成中..." : "結果カードを作る"}
+        </button>
+
+        {cardImageUrl && (
+          <div
+            style={S.resultCardOverlay}
+            onClick={() => setCardImageUrl(null)}
+          >
+            <div style={S.resultCardPreview}>
+              <p style={S.resultCardPreviewText}>長押しまたはスクリーンショットで保存できます。</p>
+              <img
+                src={cardImageUrl}
+                alt="結果カード"
+                style={S.resultCardPreviewImage}
+                onClick={(event) => event.stopPropagation()}
+              />
+              <button
+                type="button"
+                style={S.shareButton()}
+                onClick={() => setCardImageUrl(null)}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   };

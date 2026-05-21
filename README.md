@@ -43,6 +43,18 @@ npm run start
 PORT=4181 STATIC_DIR=dist node server/index.js
 ```
 
+運営用の起動補助:
+
+```bash
+# ローカルWi-Fiで遊ぶ
+npm run game -- --port 4181
+
+# 学外・別回線の参加者にも共有する
+npm run game:tunnel -- --port 4181
+```
+
+`game:tunnel` は Cloudflare Tunnel の公開URLをホスト画面へ通知し、参加者向けQRも公開URLを優先して表示します。
+
 ### 開発モード
 
 ターミナルを2つ開いて実行します。
@@ -65,6 +77,8 @@ npm run dev:server
 - Controller: `http://localhost:4173/controller.html?host=http://localhost:4173`
 
 ホスト画面からディスプレイ用URLとQRコードを出し、参加者はスマホのコントローラーで参加します。
+
+Cloudflare Tunnel で起動した場合、ホスト画面のQRとURLは `https://...trycloudflare.com` を優先します。
 
 ## 主なゲームモード
 
@@ -132,6 +146,8 @@ fallback mode では、メインディスプレイやホスト画面からも選
 - `risk`
 
 例: 知力が高いだけでは「研究・学び型」になりません。研究、授業、ゼミ、卒論などの選択履歴が必要です。
+
+コントローラーの結果画面では、共有テキストに加えて結果カード画像を生成できます。SNSや振り返りで使いやすいように、生活タイプ、プレイヤー名、代表タグを1枚にまとめます。
 
 ## 単位と卒業
 

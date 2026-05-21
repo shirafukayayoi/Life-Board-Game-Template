@@ -141,6 +141,25 @@ test("controller joining during life-map play is added to the current season eve
   assert.deepEqual(stateMessage.state.lifePlayerRoutes[latePlayer.clientId], []);
 });
 
+test("posted public tunnel url is sent to the host as the primary url", async (t) => {
+  const { port } = await startServer(t);
+  const host = await connectClient(t, port, { role: "host", name: "Host" });
+  const publicUrl = "https://campus-test.trycloudflare.com";
+
+  const response = await fetch(`http://127.0.0.1:${port}/admin/tunnel-url`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: publicUrl }),
+  });
+
+  assert.equal(response.status, 200);
+
+  const updatedWelcome = await host.waitFor(
+    (message) => message.type === "welcome" && message.urls?.includes(publicUrl),
+  );
+  assert.equal(updatedWelcome.urls[0], publicUrl);
+});
+
 test("removing an unsubmitted life-map player advances once remaining players are done", async (t) => {
   const { port } = await startServer(t);
   const host = await connectClient(t, port, { role: "host", name: "Host" });
