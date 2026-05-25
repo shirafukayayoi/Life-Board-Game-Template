@@ -718,6 +718,9 @@ export function ControllerPlayPage() {
   const [cardImageUrl, setCardImageUrl] = useState<string | null>(null);
   const [cardGenerating, setCardGenerating] = useState(false);
 
+  // Simultaneous mode: results from all players, revealed together
+  const [revealedResults, setRevealedResults] = useState<ChoiceResult[] | null>(null);
+
   // UI state
   const [confirmChoice, setConfirmChoice] = useState<string | null>(null);
   const [rolling, setRolling] = useState(false);
@@ -971,6 +974,8 @@ export function ControllerPlayPage() {
           setCurrentEvent(msg.event);
           setAvailableChoiceIds(msg.availableChoiceIds);
           setEventTargetPlayerId(clientIdRef.current);
+          // Reset revealed results when a new event arrives (simultaneous mode)
+          setRevealedResults(null);
           break;
         }
 
@@ -986,6 +991,14 @@ export function ControllerPlayPage() {
             () => setShowStatChanges(false),
             stateRef.current.mode === "life_map" ? 5000 : 2000
           );
+          break;
+        }
+
+        case "all_choices_revealed": {
+          // Simultaneous mode: all players' choices revealed at once
+          setRevealedResults(msg.results);
+          setCurrentEvent(null);
+          setConfirmChoice(null);
           break;
         }
 
@@ -1065,12 +1078,15 @@ export function ControllerPlayPage() {
     | "dice_result"
     | "choosing"
     | "animating"
+    | "revealed"
     | "year_recap"
     | "result";
 
   const viewState = useMemo((): ViewState => {
     if (gameResults || state.phase === "result") return "result";
     if (state.phase === "year_recap") return "year_recap";
+    // Simultaneous mode: show all-choices-revealed UI (master feature)
+    if (revealedResults && state.phase === "revealed") return "revealed";
     if ((showStatChanges || state.phase === "animating") && activeChoiceResult) {
       return "animating";
     }
@@ -1093,6 +1109,7 @@ export function ControllerPlayPage() {
     return "waiting";
   }, [
     state.phase,
+    revealedResults,
     isActiveTurnPlayer,
     isBoardMode,
     currentEvent,
@@ -1155,9 +1172,15 @@ export function ControllerPlayPage() {
     if (state.phase === "lobby") {
       message = "ゲーム開始を待っています...";
     } else if (state.mode === "life_map" && state.phase === "choosing") {
+      // Differentiate simultaneous (master) vs sequential mode
+      const isSimultaneous = state.currentChoiceMode === "simultaneous";
       message = myLifeChoiceSubmitted
-        ? "選択済み。ほかの人の選択を待っています..."
-        : "みんなが同時に選択中...";
+        ? isSimultaneous
+          ? "送信済み。全員の選択を待っています..."
+          : "選択済み。ほかの人の選択を待っています..."
+        : isSimultaneous
+          ? "みんなが同時に選択中..."
+          : `${currentTurnPlayer?.name ?? "..."}のターン中...`;
     } else if (isBoardMode && state.phase === "choosing" && myBoardChoiceSubmitted) {
       message =
         waitingForOthers.length > 0
@@ -1177,6 +1200,46 @@ export function ControllerPlayPage() {
       <div style={S.card}>
         {renderTurnGroupSummary()}
         <div style={S.waitingMsg(true)}>{message}</div>
+      </div>
+    );
+  };
+
+  // Simultaneous mode reveal screen (master feature): all players' choices shown together
+  const renderRevealed = () => {
+    if (!revealedResults) return null;
+    const myResult = revealedResults.find((r) => r.playerId === clientId);
+    return (
+      <div style={S.card}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, textAlign: "center" }}>
+          全員の選択が明らかに！
+        </div>
+        {myResult && (
+          <div style={{ marginBottom: 12, padding: "8px 12px", background: "rgba(255,255,255,0.05)", borderRadius: 8 }}>
+            <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 4 }}>あなたの選択</div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>「{myResult.choiceLabel}」</div>
+          </div>
+        )}
+        <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 6 }}>全員の選択</div>
+        {revealedResults.map((r) => (
+          <div
+            key={r.playerId}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              padding: "4px 0",
+              fontSize: 13,
+              borderBottom: "1px solid rgba(255,255,255,0.05)",
+            }}
+          >
+            <span style={{ color: r.playerId === clientId ? "#60a5fa" : "#e5e7eb" }}>
+              {r.playerName}
+            </span>
+            <span style={{ color: "#d1d5db" }}>→ {r.choiceLabel}</span>
+          </div>
+        ))}
+        <div style={{ marginTop: 12, fontSize: 12, color: "#6b7280", textAlign: "center" }}>
+          ホストが次のイベントに進めます
+        </div>
       </div>
     );
   };
@@ -1700,6 +1763,7 @@ export function ControllerPlayPage() {
         {viewState === "dice_result" && renderDiceResult()}
         {viewState === "choosing" && renderChoosing()}
         {viewState === "animating" && renderAnimating()}
+        {viewState === "revealed" && renderRevealed()}
         {viewState === "year_recap" && renderYearRecap()}
         {viewState === "result" && renderResult()}
       </div>
