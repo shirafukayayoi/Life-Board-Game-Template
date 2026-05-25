@@ -6,8 +6,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { generateResultCard } from "../utils/generateCard";
 import { createRoot } from "react-dom/client";
+import { generateResultCard } from "../utils/generateCard";
 import {
   Radar,
   RadarChart,
@@ -358,6 +358,82 @@ const S = {
     textAlign: "center" as const,
     marginBottom: 16,
   },
+  shareCard: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 14,
+    marginTop: 18,
+    padding: 14,
+    borderRadius: 14,
+    border: "1px solid #dbeafe",
+    background: "#eff6ff",
+  },
+  shareCardTitle: {
+    fontSize: 15,
+    fontWeight: 800,
+    color: "#1e3a8a",
+  },
+  shareCardText: {
+    marginTop: 3,
+    color: "#475569",
+    fontSize: 12,
+    lineHeight: 1.45,
+  },
+  shareCardStatus: {
+    marginTop: 6,
+    color: "#166534",
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  shareButton: (disabled = false) => ({
+    flexShrink: 0,
+    border: "none",
+    borderRadius: 12,
+    padding: "11px 16px",
+    background: disabled ? "#93c5fd" : "#2563eb",
+    color: "#fff",
+    boxShadow: "0 8px 18px rgba(37, 99, 235, 0.22)",
+    fontSize: 14,
+    fontWeight: 800,
+    cursor: disabled ? "default" : "pointer",
+  }),
+  resultCardGenerateButton: (disabled = false) => ({
+    width: "100%",
+    marginTop: 12,
+    justifyContent: "center",
+    opacity: disabled ? 0.7 : 1,
+  }),
+  resultCardOverlay: {
+    position: "fixed" as const,
+    inset: 0,
+    zIndex: 9999,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 18,
+    background: "rgba(10, 15, 31, 0.88)",
+  },
+  resultCardPreview: {
+    width: "min(100%, 420px)",
+    maxHeight: "92vh",
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    gap: 12,
+  },
+  resultCardPreviewText: {
+    margin: 0,
+    color: "#fff",
+    fontSize: 13,
+    textAlign: "center" as const,
+  },
+  resultCardPreviewImage: {
+    maxWidth: "100%",
+    maxHeight: "76vh",
+    borderRadius: 14,
+    boxShadow: "0 18px 60px rgba(0, 0, 0, 0.35)",
+  },
   // Tab bar
   tabBar: {
     display: "flex",
@@ -427,35 +503,59 @@ export function EffectBadges({ effects }: { effects?: StatEffects }) {
 }
 
 export function ChoicePreview({ choice }: { choice: EventChoice }) {
-  if (!choice.preview) return <EffectBadges effects={choice.effects} />;
   const riskLabel: Record<string, string> = {
     low: "低",
     medium: "中",
     high: "高",
     unknown: "不明",
   };
+  const tags = choice.storyTags ?? [];
+
+  if (!choice.preview && !choice.tone && tags.length === 0 && !choice.description) {
+    return (
+      <div style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.5 }}>
+        結果は決定後に反映されます
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {choice.description && (
+        <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.5 }}>
+          {choice.description}
+        </div>
+      )}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
         {choice.tone && <span style={S.effectBadge(true)}>{choice.tone}</span>}
-        {choice.preview.gain.map((item) => (
+        {choice.preview?.gain.map((item) => (
           <span key={`gain-${item}`} style={S.effectBadge(true)}>
             得られそう: {item}
           </span>
         ))}
-        {choice.preview.cost.map((item) => (
+        {choice.preview?.cost.map((item) => (
           <span key={`cost-${item}`} style={S.effectBadge(false)}>
-            失いそう: {item}
+            気をつけたい: {item}
           </span>
         ))}
       </div>
-      <div style={{ fontSize: 12, color: "#9ca3af" }}>
-        リスク: {riskLabel[choice.preview.risk]}
-        {choice.storyTags?.length ? ` / ${choice.storyTags.join("・")}` : ""}
-      </div>
+      {(choice.preview || tags.length > 0) && (
+        <div style={{ fontSize: 12, color: "#9ca3af" }}>
+          {choice.preview ? `リスク: ${riskLabel[choice.preview.risk]}` : ""}
+          {choice.preview && tags.length > 0 ? " / " : ""}
+          {tags.length > 0 ? tags.join("・") : ""}
+        </div>
+      )}
     </div>
   );
+}
+
+function formatPlayerNameList(players: Player[]): string {
+  const names = players.map((player) => `${player.name || "名前未設定"}さん`);
+  if (names.length === 0) return "...";
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]}と${names[1]}`;
+  return `${names.slice(0, -1).join("、")}と${names[names.length - 1]}`;
 }
 
 // ─── Stats Dashboard Component ──────────────────────────────────
@@ -618,6 +718,7 @@ export function ControllerPlayPage() {
   const [cardImageUrl, setCardImageUrl] = useState<string | null>(null);
   const [cardGenerating, setCardGenerating] = useState(false);
 
+  // Simultaneous mode: results from all players, revealed together
   const [revealedResults, setRevealedResults] = useState<ChoiceResult[] | null>(null);
 
   // UI state
@@ -657,9 +758,93 @@ export function ControllerPlayPage() {
     return state.players.find((p) => p.id === currentId);
   }, [state.players, state.turnIndex, state.turnOrder]);
 
-  const isMyTurn = useMemo(
-    () => !!clientId && currentTurnPlayer?.id === clientId,
-    [clientId, currentTurnPlayer]
+  const activeTurnPlayers = useMemo(() => {
+    const activeIds = state.activeTurnPlayerIds?.length
+      ? state.activeTurnPlayerIds
+      : currentTurnPlayer
+        ? [currentTurnPlayer.id]
+        : [];
+    return activeIds
+      .map((id) => state.players.find((player) => player.id === id))
+      .filter((player): player is Player => Boolean(player));
+  }, [currentTurnPlayer, state.activeTurnPlayerIds, state.players]);
+
+  const activeTurnLabel = useMemo(
+    () => formatPlayerNameList(activeTurnPlayers),
+    [activeTurnPlayers]
+  );
+
+  const isActiveTurnPlayer = useMemo(
+    () => !!clientId && activeTurnPlayers.some((player) => player.id === clientId),
+    [activeTurnPlayers, clientId]
+  );
+
+  const isBoardMode = state.mode !== "life_map";
+
+  const myBoardChoiceSubmitted = useMemo(
+    () => Boolean(clientId && state.pendingTurnChoices?.[clientId]),
+    [clientId, state.pendingTurnChoices]
+  );
+
+  const myBoardEvent = useMemo(() => {
+    if (!clientId || !isBoardMode) return null;
+    const eventForPlayer = state.activeTurnEvents?.[clientId];
+    if (eventForPlayer) return eventForPlayer;
+    if (eventTargetPlayerId === clientId) return currentEvent;
+    if (
+      state.currentEvent &&
+      activeTurnPlayers.length === 1 &&
+      activeTurnPlayers[0]?.id === clientId
+    ) {
+      return state.currentEvent;
+    }
+    return null;
+  }, [
+    activeTurnPlayers,
+    clientId,
+    currentEvent,
+    eventTargetPlayerId,
+    isBoardMode,
+    state.activeTurnEvents,
+    state.currentEvent,
+  ]);
+
+  const myAvailableChoiceIds = useMemo(() => {
+    if (!clientId) return [];
+    if (!isBoardMode) return availableChoiceIds;
+    const idsForPlayer = state.availableChoiceIdsByPlayer?.[clientId];
+    if (idsForPlayer) return idsForPlayer;
+    if (eventTargetPlayerId === clientId) return availableChoiceIds;
+    if (
+      state.currentEvent &&
+      activeTurnPlayers.length === 1 &&
+      activeTurnPlayers[0]?.id === clientId
+    ) {
+      return state.availableChoiceIds;
+    }
+    return [];
+  }, [
+    activeTurnPlayers,
+    availableChoiceIds,
+    clientId,
+    eventTargetPlayerId,
+    isBoardMode,
+    state.availableChoiceIds,
+    state.availableChoiceIdsByPlayer,
+    state.currentEvent,
+  ]);
+
+  const boardChoiceResultForMe = useMemo(() => {
+    if (!clientId || !isBoardMode) return null;
+    return (
+      state.lastTurnGroupResults?.find((result) => result.playerId === clientId) ??
+      null
+    );
+  }, [clientId, isBoardMode, state.lastTurnGroupResults]);
+
+  const activeChoiceResult = useMemo(
+    () => boardChoiceResultForMe ?? lastChoiceResult,
+    [boardChoiceResultForMe, lastChoiceResult]
   );
 
   const myLifeChoiceSubmitted = useMemo(
@@ -772,6 +957,7 @@ export function ControllerPlayPage() {
           // If this event is for me and I just rolled, delay showing
           // the event so the dice result is visible for 1.5 seconds
           const isForMe = msg.playerId === clientIdRef.current;
+          if (!isForMe) break;
           const delay = isForMe ? 1500 : 0;
           setTimeout(() => {
             setMyDiceResult(null);
@@ -788,20 +974,31 @@ export function ControllerPlayPage() {
           setCurrentEvent(msg.event);
           setAvailableChoiceIds(msg.availableChoiceIds);
           setEventTargetPlayerId(clientIdRef.current);
+          // Reset revealed results when a new event arrives (simultaneous mode)
           setRevealedResults(null);
           break;
         }
 
         case "choice_result": {
-          const isLifeMap = stateRef.current.mode === "life_map";
           const isMine = msg.result.playerId === clientIdRef.current;
-          if (isLifeMap && !isMine) break;
+          if (!isMine) break;
 
           setLastChoiceResult(msg.result);
           setCurrentEvent(null);
           setConfirmChoice(null);
           setShowStatChanges(true);
-          setTimeout(() => setShowStatChanges(false), isLifeMap ? 5000 : 2000);
+          setTimeout(
+            () => setShowStatChanges(false),
+            stateRef.current.mode === "life_map" ? 5000 : 2000
+          );
+          break;
+        }
+
+        case "all_choices_revealed": {
+          // Simultaneous mode: all players' choices revealed at once
+          setRevealedResults(msg.results);
+          setCurrentEvent(null);
+          setConfirmChoice(null);
           break;
         }
 
@@ -889,51 +1086,184 @@ export function ControllerPlayPage() {
     | "choosing"
     | "animating"
     | "revealed"
+    | "year_recap"
     | "result";
 
   const viewState = useMemo((): ViewState => {
     if (gameResults || state.phase === "result") return "result";
+    if (state.phase === "year_recap") return "year_recap";
+    // Simultaneous mode: show all-choices-revealed UI (master feature)
     if (revealedResults && state.phase === "revealed") return "revealed";
-    if (showStatChanges && lastChoiceResult) return "animating";
-    if (currentEvent && eventTargetPlayerId === clientId) return "choosing";
+    if ((showStatChanges || state.phase === "animating") && activeChoiceResult) {
+      return "animating";
+    }
+    if (isBoardMode && state.phase === "choosing" && myBoardChoiceSubmitted) {
+      return "waiting";
+    }
+    if (isBoardMode && state.phase === "choosing" && myBoardEvent) {
+      return "choosing";
+    }
+    if (
+      !isBoardMode &&
+      currentEvent &&
+      eventTargetPlayerId === clientId &&
+      !myLifeChoiceSubmitted
+    ) {
+      return "choosing";
+    }
     if (myDiceResult && !currentEvent) return "dice_result";
-    if (isMyTurn && state.phase === "rolling") return "rolling";
+    if (isActiveTurnPlayer && state.phase === "rolling") return "rolling";
     return "waiting";
   }, [
     state.phase,
-    isMyTurn,
+    revealedResults,
+    isActiveTurnPlayer,
+    isBoardMode,
     currentEvent,
     eventTargetPlayerId,
     clientId,
-    lastChoiceResult,
+    activeChoiceResult,
     showStatChanges,
     gameResults,
     revealedResults,
     myDiceResult,
+    myBoardChoiceSubmitted,
+    myBoardEvent,
+    myLifeChoiceSubmitted,
   ]);
 
   // ─── Render helpers ─────────────────────────────────────────
 
-  const renderWaiting = () => (
-    <div style={S.card}>
-      <div style={S.waitingMsg(true)}>
-        {state.phase === "lobby"
-          ? "ゲーム開始を待っています..."
-          : state.mode === "life_map" && state.phase === "choosing" && state.currentChoiceMode === "simultaneous"
-            ? myLifeChoiceSubmitted
-              ? "送信済み。全員の選択を待っています..."
-              : "みんなが同時に選択中..."
-            : `${currentTurnPlayer?.name ?? "..."}のターン中...`}
+  const renderTurnGroupSummary = () => {
+    if (!isBoardMode || activeTurnPlayers.length === 0 || state.phase === "lobby") {
+      return null;
+    }
+
+    const submittedPlayers = activeTurnPlayers.filter((player) =>
+      Boolean(state.pendingTurnChoices?.[player.id])
+    );
+
+    return (
+      <div
+        style={{
+          borderRadius: 14,
+          background: "#f8fafc",
+          border: "1px solid #e5e7eb",
+          padding: "12px 14px",
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+          今のターン
+        </div>
+        <div style={{ fontSize: 18, fontWeight: 800, marginTop: 4 }}>
+          {activeTurnLabel}
+        </div>
+        {state.phase === "choosing" && activeTurnPlayers.length > 1 && (
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+            {submittedPlayers.length}/{activeTurnPlayers.length} 人が選択済み
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
+
+  const renderWaiting = () => {
+    const pendingPlayers = activeTurnPlayers.filter(
+      (player) => !state.pendingTurnChoices?.[player.id]
+    );
+    const waitingForOthers = pendingPlayers.filter(
+      (player) => player.id !== clientId
+    );
+
+    let message = "待機中...";
+    if (state.phase === "lobby") {
+      message = "ゲーム開始を待っています...";
+    } else if (state.mode === "life_map" && state.phase === "choosing") {
+      // Differentiate simultaneous (master) vs sequential mode
+      const isSimultaneous = state.currentChoiceMode === "simultaneous";
+      message = myLifeChoiceSubmitted
+        ? isSimultaneous
+          ? "送信済み。全員の選択を待っています..."
+          : "選択済み。ほかの人の選択を待っています..."
+        : isSimultaneous
+          ? "みんなが同時に選択中..."
+          : `${currentTurnPlayer?.name ?? "..."}のターン中...`;
+    } else if (isBoardMode && state.phase === "choosing" && myBoardChoiceSubmitted) {
+      message =
+        waitingForOthers.length > 0
+          ? `選択済み。${formatPlayerNameList(waitingForOthers)}の選択を待っています...`
+          : "選択済み。結果を待っています...";
+    } else if (isBoardMode && state.phase === "choosing") {
+      message = `${activeTurnLabel}が選択中...`;
+    } else if (isBoardMode && state.phase === "rolling") {
+      message = `${activeTurnLabel}のターンです...`;
+    } else if (isBoardMode && state.phase === "animating") {
+      message = `${activeTurnLabel}の結果を確認中...`;
+    } else if (currentTurnPlayer) {
+      message = `${currentTurnPlayer.name}さんのターン中...`;
+    }
+
+    return (
+      <div style={S.card}>
+        {renderTurnGroupSummary()}
+        <div style={S.waitingMsg(true)}>{message}</div>
+      </div>
+    );
+  };
+
+  // Simultaneous mode reveal screen (master feature): all players' choices shown together
+  const renderRevealed = () => {
+    if (!revealedResults) return null;
+    const myResult = revealedResults.find((r) => r.playerId === clientId);
+    return (
+      <div style={S.card}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, textAlign: "center" }}>
+          全員の選択が明らかに！
+        </div>
+        {myResult && (
+          <div style={{ marginBottom: 12, padding: "8px 12px", background: "rgba(255,255,255,0.05)", borderRadius: 8 }}>
+            <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 4 }}>あなたの選択</div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>「{myResult.choiceLabel}」</div>
+          </div>
+        )}
+        <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 6 }}>全員の選択</div>
+        {revealedResults.map((r) => (
+          <div
+            key={r.playerId}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              padding: "4px 0",
+              fontSize: 13,
+              borderBottom: "1px solid rgba(255,255,255,0.05)",
+            }}
+          >
+            <span style={{ color: r.playerId === clientId ? "#60a5fa" : "#e5e7eb" }}>
+              {r.playerName}
+            </span>
+            <span style={{ color: "#d1d5db" }}>→ {r.choiceLabel}</span>
+          </div>
+        ))}
+        <div style={{ marginTop: 12, fontSize: 12, color: "#6b7280", textAlign: "center" }}>
+          ホストが次のイベントに進めます
+        </div>
+      </div>
+    );
+  };
 
   const renderRolling = () => (
     <div style={S.card}>
+      {renderTurnGroupSummary()}
       <div style={{ textAlign: "center", padding: "16px 0" }}>
         <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
-          あなたの月です!
+          {activeTurnPlayers.length > 1 ? "あなたたちのターンです!" : "あなたの月です!"}
         </div>
+        {activeTurnPlayers.length > 1 && (
+          <div style={{ fontSize: 14, color: "#6b7280", lineHeight: 1.6 }}>
+            同じタイミングでイベントを開き、それぞれの選択を比べられます。
+          </div>
+        )}
         <button
           style={{
             ...S.diceButton(accentColor),
@@ -970,7 +1300,8 @@ export function ControllerPlayPage() {
   };
 
   const renderChoosing = () => {
-    if (!currentEvent) return null;
+    const eventToRender = isBoardMode ? myBoardEvent : currentEvent;
+    if (!eventToRender) return null;
     const CHOICE_COLORS = [
       "#3b82f6",
       "#f59e0b",
@@ -980,11 +1311,12 @@ export function ControllerPlayPage() {
     ];
     return (
       <div style={S.card}>
-        <div style={S.eventTitle}>{currentEvent.title}</div>
-        <div style={S.eventDesc}>{currentEvent.description}</div>
+        {renderTurnGroupSummary()}
+        <div style={S.eventTitle}>{eventToRender.title}</div>
+        <div style={S.eventDesc}>{eventToRender.description}</div>
 
-        {currentEvent.choices.map((choice, i) => {
-          const isAvailable = availableChoiceIds.includes(choice.id);
+        {eventToRender.choices.map((choice, i) => {
+          const isAvailable = myAvailableChoiceIds.includes(choice.id);
           const letter = String.fromCharCode(65 + i);
           return (
             <div
@@ -1038,7 +1370,7 @@ export function ControllerPlayPage() {
   };
 
   const renderAnimating = () => {
-    if (!lastChoiceResult) return null;
+    if (!activeChoiceResult) return null;
     const allKeys = [...RESOURCE_KEYS, ...EXPERIENCE_KEYS] as string[];
     const labels: Record<string, string> = {
       ...RESOURCE_LABELS,
@@ -1047,19 +1379,20 @@ export function ControllerPlayPage() {
     const changes = allKeys
       .filter(
         (k) =>
-          (lastChoiceResult.effects as Record<string, number>)[k] !== undefined
+          (activeChoiceResult.effects as Record<string, number>)[k] !== undefined
       )
       .map((k) => ({
         key: k,
-        value: (lastChoiceResult.effects as Record<string, number>)[k],
+        value: (activeChoiceResult.effects as Record<string, number>)[k],
         label: labels[k],
       }));
 
     return (
       <div style={S.card}>
+        {renderTurnGroupSummary()}
         <div style={{ textAlign: "center", padding: "20px 0" }}>
           <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
-            「{lastChoiceResult.choiceLabel}」を選択
+            「{activeChoiceResult.choiceLabel}」を選択
           </div>
           <div>
             {changes.map((c) => (
@@ -1074,29 +1407,99 @@ export function ControllerPlayPage() {
     );
   };
 
-  const renderRevealed = () => {
-    if (!revealedResults) return null;
-    const myResult = revealedResults.find((r) => r.playerId === clientId);
+  const renderYearRecap = () => {
+    const recap = state.yearRecap;
+    if (!recap) {
+      return (
+        <div style={S.card}>
+          <div style={S.waitingMsg(false)}>年末の振り返りを準備しています...</div>
+        </div>
+      );
+    }
+
     return (
       <div style={S.card}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, textAlign: "center" }}>
-          全員の選択が明らかに！
+        <div style={S.eventTitle}>{recap.title}</div>
+        <div style={S.eventDesc}>
+          ホストが次の年へ進めるまで、全員の今の状態を確認できます。
         </div>
-        {myResult && (
-          <div style={{ marginBottom: 12, padding: "8px 12px", background: "rgba(255,255,255,0.05)", borderRadius: 8 }}>
-            <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 4 }}>あなたの選択</div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>「{myResult.choiceLabel}」</div>
-          </div>
-        )}
-        <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 6 }}>全員の選択</div>
-        {revealedResults.map((r) => (
-          <div key={r.playerId} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13, borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-            <span style={{ color: r.playerId === clientId ? "#60a5fa" : "#e5e7eb" }}>{r.playerName}</span>
-            <span style={{ color: "#d1d5db" }}>→ {r.choiceLabel}</span>
-          </div>
-        ))}
-        <div style={{ marginTop: 12, fontSize: 12, color: "#6b7280", textAlign: "center" }}>
-          ホストが次のイベントに進めます
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {recap.players.map((player) => {
+            const isMe = player.playerId === clientId;
+            return (
+              <div
+                key={player.playerId}
+                style={{
+                  border: isMe ? `2px solid ${accentColor}` : "1px solid #e5e7eb",
+                  borderRadius: 16,
+                  padding: 14,
+                  background: isMe ? "#f8fbff" : "#fff",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  <div style={{ fontSize: 17, fontWeight: 800 }}>
+                    {player.playerName}
+                  </div>
+                  {isMe && (
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: accentColor,
+                        background: "#eff6ff",
+                        borderRadius: 999,
+                        padding: "4px 8px",
+                      }}
+                    >
+                      あなた
+                    </span>
+                  )}
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 8,
+                    marginBottom: 10,
+                  }}
+                >
+                  <div style={{ fontSize: 13, color: "#64748b" }}>
+                    単位
+                    <div style={{ fontSize: 20, color: "#111827", fontWeight: 800 }}>
+                      {player.credits}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, color: "#64748b" }}>
+                    卒業見込み
+                    <div style={{ fontSize: 14, color: "#111827", fontWeight: 700 }}>
+                      {player.graduationOutlook}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
+                  {player.creditStatus}
+                </div>
+                {player.strengths.length > 0 && (
+                  <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.5 }}>
+                    強み: {player.strengths.join("、")}
+                  </div>
+                )}
+                {player.warningSigns.length > 0 && (
+                  <div style={{ fontSize: 13, color: "#92400e", lineHeight: 1.5 }}>
+                    注意: {player.warningSigns.join("、")}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -1151,6 +1554,31 @@ export function ControllerPlayPage() {
     [buildShareText],
   );
 
+  const handleGenerateResultCard = useCallback(
+    async (result: PlayerResult) => {
+      const archetype = result.lifeArchetype ?? result.ending;
+      if (!archetype) return;
+
+      setCardGenerating(true);
+      setShareStatus(null);
+      try {
+        const imageUrl = await generateResultCard({
+          playerName: result.playerName,
+          archetypeId: archetype.id,
+          archetypeTitle: archetype.title,
+          archetypeDescription: result.summary ?? archetype.description,
+          storyTags: result.storyTags ?? [],
+        });
+        setCardImageUrl(imageUrl);
+      } catch {
+        setShareStatus("結果カードを作れませんでした");
+      } finally {
+        setCardGenerating(false);
+      }
+    },
+    [],
+  );
+
   const renderResult = () => {
     const results = gameResults;
     if (!results) return null;
@@ -1174,7 +1602,7 @@ export function ControllerPlayPage() {
             : myResult.ending?.title ?? "キャンパスライフ完走"}
         </div>
         <div style={S.resultDesc}>
-          {myResult.summary ?? myResult.ending?.description ?? "4年間の選択がここに刻まれました。"}
+          {myResult.summary ?? myResult.ending?.description ?? "4年間の選択結果です。"}
         </div>
         {myResult.ending?.flavorText && (
           <div className="controller-result-flavor">
@@ -1240,93 +1668,54 @@ export function ControllerPlayPage() {
             ))}
           </div>
         )}
-        <div className="share-card">
+        <div style={S.shareCard}>
           <div>
-            <div className="share-card__title">結果をシェア</div>
-            <div className="share-card__text">
+            <div style={S.shareCardTitle}>結果をシェア</div>
+            <div style={S.shareCardText}>
               名前、エンディング、順位、スコアを共有できます。
             </div>
             {shareStatus && (
-              <div className="share-card__status">{shareStatus}</div>
+              <div style={S.shareCardStatus}>{shareStatus}</div>
             )}
           </div>
           <button
-            className="share-card__button"
+            style={S.shareButton()}
             type="button"
             onClick={() => void handleShareResult(myResult)}
           >
             共有
           </button>
         </div>
+        <button
+          style={{ ...S.shareButton(cardGenerating), ...S.resultCardGenerateButton(cardGenerating) }}
+          type="button"
+          disabled={cardGenerating}
+          onClick={() => void handleGenerateResultCard(myResult)}
+        >
+          {cardGenerating ? "カード生成中..." : "結果カードを作る"}
+        </button>
 
-        {/* Card image generator — only shown for life_map mode */}
-        {myResult.lifeArchetype && (
-          <div style={{ marginTop: 16, textAlign: "center" }}>
-            <button
-              className="share-card__button"
-              type="button"
-              disabled={cardGenerating}
-              style={{ width: "100%", opacity: cardGenerating ? 0.6 : 1 }}
-              onClick={() => {
-                if (!myResult.lifeArchetype) return;
-                setCardGenerating(true);
-                generateResultCard({
-                  playerName: myResult.playerName,
-                  archetypeId: myResult.lifeArchetype.id,
-                  archetypeTitle: myResult.lifeArchetype.title,
-                  archetypeDescription: myResult.lifeArchetype.description,
-                  storyTags: myResult.storyTags ?? [],
-                })
-                  .then((url) => setCardImageUrl(url))
-                  .catch(() => {/* silently ignore */})
-                  .finally(() => setCardGenerating(false));
-              }}
-            >
-              {cardGenerating ? "カード生成中..." : "📸 結果カードを作る"}
-            </button>
-          </div>
-        )}
-
-        {/* Full-screen card preview overlay */}
         {cardImageUrl && (
           <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.85)",
-              zIndex: 9999,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 16,
-            }}
+            style={S.resultCardOverlay}
             onClick={() => setCardImageUrl(null)}
           >
-            <p style={{ color: "#fff", marginBottom: 12, fontSize: 14 }}>
-              スクリーンショットで保存してください
-            </p>
-            <img
-              src={cardImageUrl}
-              alt="結果カード"
-              style={{ maxWidth: "100%", maxHeight: "80vh", borderRadius: 12 }}
-              onClick={(e) => e.stopPropagation()}
-            />
-            <button
-              type="button"
-              style={{
-                marginTop: 16,
-                padding: "10px 32px",
-                background: "rgba(255,255,255,0.15)",
-                color: "#fff",
-                border: "1px solid rgba(255,255,255,0.3)",
-                borderRadius: 8,
-                fontSize: 14,
-              }}
-              onClick={() => setCardImageUrl(null)}
-            >
-              閉じる
-            </button>
+            <div style={S.resultCardPreview}>
+              <p style={S.resultCardPreviewText}>長押しまたはスクリーンショットで保存できます。</p>
+              <img
+                src={cardImageUrl}
+                alt="結果カード"
+                style={S.resultCardPreviewImage}
+                onClick={(event) => event.stopPropagation()}
+              />
+              <button
+                type="button"
+                style={S.shareButton()}
+                onClick={() => setCardImageUrl(null)}
+              >
+                閉じる
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -1335,8 +1724,9 @@ export function ControllerPlayPage() {
 
   // ─── Confirmation Dialog ────────────────────────────────────
   const renderConfirmDialog = () => {
-    if (!confirmChoice || !currentEvent) return null;
-    const choice = currentEvent.choices.find((c) => c.id === confirmChoice);
+    const eventToConfirm = isBoardMode ? myBoardEvent : currentEvent;
+    if (!confirmChoice || !eventToConfirm) return null;
+    const choice = eventToConfirm.choices.find((c) => c.id === confirmChoice);
     if (!choice) return null;
 
     return (
@@ -1382,11 +1772,12 @@ export function ControllerPlayPage() {
         {viewState === "choosing" && renderChoosing()}
         {viewState === "animating" && renderAnimating()}
         {viewState === "revealed" && renderRevealed()}
+        {viewState === "year_recap" && renderYearRecap()}
         {viewState === "result" && renderResult()}
       </div>
 
       {/* Stats dashboard (always shown unless result) */}
-      {myPlayer && viewState !== "result" && (
+      {myPlayer && viewState !== "result" && viewState !== "year_recap" && (
         <div style={S.card}>
           <StatsDashboard player={myPlayer} />
         </div>

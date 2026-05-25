@@ -15,6 +15,7 @@
           "health": 1
         },
         "flagEffects": {
+          "housing": "family",
           "living_alone": false
         },
         "polarity": "positive"
@@ -28,6 +29,7 @@
           "action_power": 2
         },
         "flagEffects": {
+          "housing": "alone",
           "living_alone": true
         },
         "polarity": "mixed"
@@ -41,6 +43,7 @@
           "money": -1
         },
         "flagEffects": {
+          "housing": "dorm_share",
           "living_alone": false
         },
         "polarity": "positive"
@@ -280,6 +283,11 @@
       {
         "id": "6A",
         "label": "実家のまま後期の履修を厚くする",
+        "condition": {
+          "requiredFlags": {
+            "housing": "family"
+          }
+        },
         "effects": {
           "credits": 5,
           "intellect": 1,
@@ -296,6 +304,7 @@
           "action_power": 2
         },
         "flagEffects": {
+          "housing": "alone",
           "living_alone": true
         },
         "polarity": "mixed"
@@ -307,15 +316,20 @@
           "credits": 4,
           "connections": 2
         },
+        "flagEffects": {
+          "housing": "dorm_share",
+          "living_alone": false
+        },
         "polarity": "positive"
       }
     ],
     "conditionalVariants": [
       {
         "condition": {
-          "requiredFlags": {
-            "living_alone": true
-          }
+        "requiredFlags": {
+          "housing": "alone",
+          "living_alone": true
+        }
         },
         "description": "すでに一人暮らしを始めている。ここからは生活の質を調整する月。",
         "choices": [
@@ -420,7 +434,7 @@
       },
       {
         "id": "8C",
-        "label": "最低限で済ませて余白を作る",
+        "label": "必要なことだけ終わらせて休む",
         "effects": {
           "credits": 2,
           "health": 1,
@@ -432,7 +446,7 @@
   },
   "9": {
     "id": "9",
-    "title": "冬の誘いと距離感",
+    "title": "冬の誘い",
     "description": "忘年会、クリスマス、気になる相手。近づくにも引くにも選択がいる。",
     "year": 1,
     "category": "恋愛",
@@ -581,12 +595,18 @@
       {
         "id": "13C",
         "label": "最後のチャンスで一人暮らしに移る",
+        "condition": {
+          "excludedFlags": {
+            "housing": "alone"
+          }
+        },
         "effects": {
           "credits": 4,
           "money": -2,
           "action_power": 2
         },
         "flagEffects": {
+          "housing": "alone",
           "living_alone": true
         },
         "polarity": "mixed"
@@ -595,9 +615,10 @@
     "conditionalVariants": [
       {
         "condition": {
-          "requiredFlags": {
-            "living_alone": true
-          }
+        "requiredFlags": {
+          "housing": "alone",
+          "living_alone": true
+        }
         },
         "description": "住まいは固まった。2年目は専門と役割の選び方が軸になる。",
         "choices": [
@@ -891,7 +912,7 @@
       },
       {
         "id": "20C",
-        "label": "最低限で済ませて余白を作る",
+        "label": "必要なことだけ終わらせて休む",
         "effects": {
           "credits": 3,
           "health": 1,
@@ -926,6 +947,9 @@
           "onSuccess": {
             "romance_exp": 3,
             "health": 1
+          },
+          "onSuccessFlags": {
+            "has_partner": true
           },
           "onFailure": {
             "romance_exp": 1,
@@ -1008,7 +1032,7 @@
   "24": {
     "id": "24",
     "title": "春休み自由行動",
-    "description": "3年に入る前の最後の空白。",
+    "description": "3年になる前の春休み。遊ぶか、準備するか、少し休むかを決める。",
     "year": 2,
     "category": "自由プール",
     "choices": [
@@ -1340,7 +1364,7 @@
       },
       {
         "id": "32C",
-        "label": "最低限で済ませて余白を作る",
+        "label": "必要なことだけ終わらせて休む",
         "effects": {
           "credits": 3,
           "health": 1,
@@ -1353,7 +1377,7 @@
   "33": {
     "id": "33",
     "title": "年末の関係整理",
-    "description": "研究室、人間関係、恋人との距離。進路前に気持ちも整える。",
+    "description": "研究室、人間関係、就活前の予定を整理する時期。",
     "year": 3,
     "category": "学業+恋愛",
     "choices": [
@@ -1386,6 +1410,11 @@
         "storyTags": [
           "恋愛"
         ],
+        "condition": {
+          "requiredFlags": {
+            "has_partner": true
+          }
+        },
         "polarity": "mixed"
       },
       {
@@ -2001,7 +2030,7 @@
       },
       {
         "id": "41C",
-        "label": "最低限で済ませて余白を作る",
+        "label": "必要なことだけ終わらせて休む",
         "effects": {
           "credits": 3,
           "health": 1,
@@ -2040,7 +2069,7 @@
       },
       {
         "id": "42C",
-        "label": "最低限で済ませて余白を作る",
+        "label": "必要なことだけ終わらせて休む",
         "effects": {
           "credits": 3,
           "health": 1,
@@ -2145,7 +2174,7 @@
       },
       {
         "id": "44C",
-        "label": "最低限で済ませて余白を作る",
+        "label": "必要なことだけ終わらせて休む",
         "effects": {
           "credits": 4,
           "health": 1,
@@ -2301,7 +2330,7 @@
       },
       {
         "id": "48C",
-        "label": "静かにキャンパスを歩く",
+        "label": "最後にキャンパスを一周する",
         "effects": {
           "health": 2,
           "intellect": 1

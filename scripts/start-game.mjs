@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * ゲームサーバー起動スクリプト
  *
@@ -14,14 +15,39 @@
 
 import { spawn } from "node:child_process";
 
-// ─── CLI 引数 ─────────────────────────────────────────────────────
-const args = process.argv.slice(2);
-const getArg = (name, def) => { const i = args.indexOf(`--${name}`); return i === -1 ? def : (args[i + 1] ?? def); };
-const hasFlag = (name) => args.includes(`--${name}`);
+// ─── CLI 引数（codex 流の構造化パース＋バリデーション） ─────────────
+function parseArgs(argv) {
+  const options = {
+    port: 4173,
+    tunnel: false,
+    name: "",
+  };
 
-const PORT      = parseInt(getArg("port", "4173"), 10);
-const USE_TUNNEL = hasFlag("tunnel");
-const GAME_NAME  = getArg("name", `ゲーム (ポート ${PORT})`);
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const next = argv[index + 1];
+    if (arg === "--port" && next) {
+      options.port = Number(next);
+      index += 1;
+    } else if (arg === "--name" && next) {
+      options.name = next;
+      index += 1;
+    } else if (arg === "--tunnel") {
+      options.tunnel = true;
+    }
+  }
+
+  if (!Number.isInteger(options.port) || options.port < 1 || options.port > 65535) {
+    throw new Error("--port は 1〜65535 の整数で指定してください");
+  }
+
+  return options;
+}
+
+const options = parseArgs(process.argv.slice(2));
+const PORT = options.port;
+const USE_TUNNEL = options.tunnel;
+const GAME_NAME = options.name || `ゲーム (ポート ${PORT})`;
 
 // ─── ユーティリティ ───────────────────────────────────────────────
 const sep = "═".repeat(60);
@@ -37,7 +63,7 @@ function startServer(tunnelUrl = null) {
   const env = { ...process.env, PORT: String(PORT) };
   if (tunnelUrl) env.PUBLIC_URL = tunnelUrl;
 
-  const server = spawn("node", ["server/index.js"], {
+  const server = spawn(process.execPath, ["server/index.js"], {
     env,
     stdio: "inherit",
     cwd: process.cwd(),
@@ -57,29 +83,47 @@ function startTunnel() {
     );
 
     const urlPattern = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cf.kill();
+      reject(new Error("Tunnel URL取得タイムアウト (60秒)"));
+    }, 60_000);
 
     const onData = (data) => {
+      if (settled) return;
       const text = data.toString();
       const match = text.match(urlPattern);
-      if (match) resolve({ url: match[0], process: cf });
+      if (match) {
+        settled = true;
+        clearTimeout(timeout);
+        resolve({ url: match[0], process: cf });
+      }
     };
 
     cf.stdout.on("data", onData);
     cf.stderr.on("data", onData);
-    cf.on("error", reject);
-    cf.on("exit", (code) => {
-      if (code !== 0) reject(new Error(`cloudflared exited with code ${code}`));
+    cf.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(err);
     });
-
-    setTimeout(() => reject(new Error("Tunnel URL取得タイムアウト (60秒)")), 60_000);
+    cf.on("exit", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(new Error(`cloudflared が終了しました (code: ${code ?? "unknown"})`));
+    });
   });
 }
 
 // ─── サーバーにトンネルURLを通知 ──────────────────────────────────
-async function notifyServer(url, retries = 10) {
+async function notifyServer(url, retries = 20) {
   for (let i = 0; i < retries; i++) {
     try {
-      const res = await fetch(`http://localhost:${PORT}/admin/tunnel-url`, {
+      const res = await fetch(`http://127.0.0.1:${PORT}/admin/tunnel-url`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
@@ -88,7 +132,7 @@ async function notifyServer(url, retries = 10) {
     } catch {
       // サーバー起動待ち
     }
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 500));
   }
   return false;
 }
@@ -97,10 +141,18 @@ async function notifyServer(url, retries = 10) {
 async function main() {
   if (!USE_TUNNEL) {
     // ── ローカルWiFiモード ──────────────────────────────────────
+    const localHost = `http://localhost:${PORT}`;
     printBox([
       `🎮  ${GAME_NAME}`,
       `📡  モード: ローカルWiFi`,
       `🔌  ポート: ${PORT}`,
+      ``,
+      `🖥️   ホスト画面:`,
+      `    ${localHost}`,
+      `📺  ディスプレイ:`,
+      `    ${localHost}/display.html?host=${encodeURIComponent(localHost)}`,
+      `📱  参加者:`,
+      `    ${localHost}/controller.html?host=${encodeURIComponent(localHost)}`,
       ``,
       `参加者と同じWiFiに繋いで、ホスト画面のQRコードを共有してください。`,
     ]);
@@ -114,10 +166,18 @@ async function main() {
 
   // 1. サーバー起動
   const server = startServer();
+  let tunnelProc = null;
+
+  // Ctrl+C でクリーンアップ（早めに登録）
+  process.on("SIGINT", () => {
+    console.log("\nゲームを終了します...");
+    tunnelProc?.kill();
+    server?.kill();
+    process.exit(0);
+  });
 
   // 2. Tunnel起動
   console.log("🌐 Cloudflare Tunnel を起動中... (10〜30秒かかります)");
-  let tunnelProc;
   try {
     const { url, process: cf } = await startTunnel();
     tunnelProc = cf;
@@ -132,28 +192,23 @@ async function main() {
       `🎮  ${GAME_NAME} — 起動完了！`,
       ``,
       `📱  参加者向けURL (どこからでもアクセス可):`,
-      `    ${url}`,
+      `    ${url}/controller.html?host=${encodeURIComponent(url)}`,
       ``,
       `🖥️   ホスト管理画面:`,
-      `    ${url}/host.html`,
+      `    ${url}`,
+      `📺  ディスプレイ画面:`,
+      `    ${url}/display.html?host=${encodeURIComponent(url)}`,
       ``,
-      `💡  このURLをQRコードに変換してプロジェクターに映すか、`,
+      `💡  参加者向けURLをQRコードに変換してプロジェクターに映すか、`,
       `    参加者に直接送ってください。`,
       ``,
       `⚠️   このターミナルを閉じるとゲームが終了します。`,
     ]);
-
-    // Ctrl+C でクリーンアップ
-    process.on("SIGINT", () => {
-      console.log("\nゲームを終了します...");
-      tunnelProc?.kill();
-      server?.kill();
-      process.exit(0);
-    });
   } catch (err) {
     console.error(`\n❌ Tunnel起動失敗: ${err.message}`);
     console.error("ローカルWiFiモードで継続します。");
-    console.error("cloudflared がインストールされていない場合: npm install -g cloudflared");
+    console.error("cloudflared がインストールされていない場合は自動でインストールが試みられます。");
+    console.error("手動インストール: npm install -g cloudflared");
     // サーバーはそのまま継続
   }
 }

@@ -1,7 +1,3 @@
-// ─── Result Card Generator ────────────────────────────────────────
-// Composites archetype background image + player name + story tags
-// onto a Canvas and exports as PNG data URL.
-
 export interface CardData {
   playerName: string;
   archetypeId: string;
@@ -10,97 +6,115 @@ export interface CardData {
   storyTags: string[];
 }
 
-// Panel starts at 72% from top — matches the dark area in all 6 background images
+const CARD_BACKGROUNDS = new Set([
+  "adventurer",
+  "balanced",
+  "self_searcher",
+  "social_burnout",
+  "social_connector",
+  "steady_builder",
+]);
+
+const ARCHETYPE_BACKGROUND_MAP: Record<string, string> = {
+  scholar: "steady_builder",
+  campus_connector: "social_connector",
+  romantic: "social_connector",
+  career_builder: "steady_builder",
+  creative_runner: "adventurer",
+  rest_keeper: "self_searcher",
+  balanced_life: "balanced",
+};
+
 const PANEL_RATIO = 0.72;
 const PAD = 50;
 
 export async function generateResultCard(data: CardData): Promise<string> {
-  const img = await loadImage(`/cards/bg_${data.archetypeId}.png`);
+  const backgroundId = resolveBackgroundId(data.archetypeId);
+  const image = await loadImage(`/cards/bg_${backgroundId}.png`);
 
   const canvas = document.createElement("canvas");
-  canvas.width = img.naturalWidth;   // 941
-  canvas.height = img.naturalHeight; // 1672
-  const ctx = canvas.getContext("2d")!;
-
-  // ── Background ──
-  ctx.drawImage(img, 0, 0);
-
-  const W = canvas.width;
-  const H = canvas.height;
-  const PANEL_Y = Math.round(H * PANEL_RATIO); // ≈ 1204
-
-  const FONT = `"Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif`;
-
-  // ── Player name ──
-  ctx.font = `32px ${FONT}`;
-  ctx.fillStyle = "rgba(255, 255, 255, 0.60)";
-  ctx.fillText(`${data.playerName} の4年間`, PAD, PANEL_Y + 52);
-
-  // ── Archetype title ──
-  ctx.font = `bold 58px ${FONT}`;
-  ctx.fillStyle = "#ffffff";
-  // Scale down if title is long
-  const titleWidth = ctx.measureText(data.archetypeTitle).width;
-  if (titleWidth > W - PAD * 2) {
-    const scale = (W - PAD * 2) / titleWidth;
-    ctx.font = `bold ${Math.floor(58 * scale)}px ${FONT}`;
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Canvas is not available");
   }
-  ctx.fillText(data.archetypeTitle, PAD, PANEL_Y + 128);
 
-  // ── Description (auto-wrap) ──
-  ctx.font = `26px ${FONT}`;
-  ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
-  const descLines = wrapText(ctx, data.archetypeDescription, W - PAD * 2);
-  const DESC_LINE_H = 36;
-  descLines.slice(0, 3).forEach((line, i) => {
-    ctx.fillText(line, PAD, PANEL_Y + 190 + i * DESC_LINE_H);
+  context.drawImage(image, 0, 0);
+
+  const width = canvas.width;
+  const height = canvas.height;
+  const panelY = Math.round(height * PANEL_RATIO);
+  const fontFamily = `"Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif`;
+
+  context.font = `32px ${fontFamily}`;
+  context.fillStyle = "rgba(255, 255, 255, 0.60)";
+  context.fillText(`${data.playerName} の4年間`, PAD, panelY + 52);
+
+  context.font = `bold 58px ${fontFamily}`;
+  context.fillStyle = "#ffffff";
+  const titleWidth = context.measureText(data.archetypeTitle).width;
+  if (titleWidth > width - PAD * 2) {
+    const scale = (width - PAD * 2) / titleWidth;
+    context.font = `bold ${Math.floor(58 * scale)}px ${fontFamily}`;
+  }
+  context.fillText(data.archetypeTitle, PAD, panelY + 128);
+
+  context.font = `26px ${fontFamily}`;
+  context.fillStyle = "rgba(255, 255, 255, 0.78)";
+  const descriptionLines = wrapText(context, data.archetypeDescription, width - PAD * 2);
+  const descriptionLineHeight = 36;
+  descriptionLines.slice(0, 3).forEach((line, index) => {
+    context.fillText(line, PAD, panelY + 190 + index * descriptionLineHeight);
   });
 
-  // ── Story tags ──
   const tags = data.storyTags.slice(0, 6);
   if (tags.length > 0) {
-    const tagBaseY = PANEL_Y + 190 + Math.min(descLines.length, 3) * DESC_LINE_H + 36;
-    ctx.font = `26px ${FONT}`;
-    ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
-
-    // Split into rows of 3
-    const row1 = tags.slice(0, 3).map((t) => `#${t}`).join("   ");
-    const row2 = tags.slice(3, 6).map((t) => `#${t}`).join("   ");
-    ctx.fillText(row1, PAD, tagBaseY);
-    if (row2) ctx.fillText(row2, PAD, tagBaseY + 38);
+    const tagBaseY = panelY + 190 + Math.min(descriptionLines.length, 3) * descriptionLineHeight + 36;
+    context.font = `26px ${fontFamily}`;
+    context.fillStyle = "rgba(255, 255, 255, 0.55)";
+    context.fillText(tags.slice(0, 3).map((tag) => `#${tag}`).join("   "), PAD, tagBaseY);
+    const secondRow = tags.slice(3, 6).map((tag) => `#${tag}`).join("   ");
+    if (secondRow) {
+      context.fillText(secondRow, PAD, tagBaseY + 38);
+    }
   }
 
   return canvas.toDataURL("image/png");
 }
 
-// ── Helpers ──────────────────────────────────────────────────────
+function resolveBackgroundId(archetypeId: string): string {
+  if (CARD_BACKGROUNDS.has(archetypeId)) return archetypeId;
+  return ARCHETYPE_BACKGROUND_MAP[archetypeId] ?? "balanced";
+}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Failed to load: ${src}`));
-    img.src = src;
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+    image.src = src;
   });
 }
 
-/** Wraps Japanese text by character to fit maxWidth */
 function wrapText(
-  ctx: CanvasRenderingContext2D,
+  context: CanvasRenderingContext2D,
   text: string,
   maxWidth: number,
 ): string[] {
   const lines: string[] = [];
   let current = "";
+
   for (const char of text) {
     const candidate = current + char;
-    if (ctx.measureText(candidate).width > maxWidth) {
+    if (context.measureText(candidate).width > maxWidth) {
       if (current) lines.push(current);
       current = char;
     } else {
       current = candidate;
     }
   }
+
   if (current) lines.push(current);
   return lines;
 }

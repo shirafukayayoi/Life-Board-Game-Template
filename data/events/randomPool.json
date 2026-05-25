@@ -29,7 +29,7 @@
     "choices": [
       {
         "id": "random_sns_A",
-        "label": "流れに乗る",
+        "label": "誘いに乗る",
         "effects": {
           "connections": 2,
           "action_power": 1
@@ -287,5 +287,70 @@
     ],
     "weight": 5,
     "polarity": "negative"
+  },
+  "random_study_abroad": {
+    "id": "random_study_abroad",
+    "title": "留学の募集",
+    "description": "大学から短期留学プログラムの案内が来た。",
+    "year": null,
+    "category": "ランダム",
+    "choices": [
+      {
+        "id": "random_study_abroad_A",
+        "label": "短期留学に申し込む",
+        "effects": {
+          "intellect": 2,
+          "action_power": 2,
+          "money": -1
+        },
+        "flagEffects": {
+          "studying_abroad": true
+        },
+        "intentTags": [
+          "adventure",
+          "research",
+          "community"
+        ],
+        "resultWeight": 2,
+        "polarity": "positive"
+      },
+      {
+        "id": "random_study_abroad_B",
+        "label": "国際交流イベントに行く",
+        "effects": {
+          "connections": 2,
+          "intellect": 1
+        },
+        "intentTags": [
+          "community",
+          "social",
+          "adventure"
+        ],
+        "polarity": "positive"
+      },
+      {
+        "id": "random_study_abroad_C",
+        "label": "今は情報だけ集める",
+        "effects": {
+          "intellect": 1,
+          "action_power": 1,
+          "money": 1
+        },
+        "intentTags": [
+          "career",
+          "adventure",
+          "study"
+        ],
+        "polarity": "positive"
+      }
+    ],
+    "weight": 5,
+    "polarity": "positive",
+    "condition": {
+      "minRound": 18,
+      "excludedFlags": {
+        "studying_abroad": true
+      }
+    }
   }
 }

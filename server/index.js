@@ -23,6 +23,12 @@ import {
   getVisibleStatEffects,
   normalizeChoiceEffects,
 } from "./timelineGame.js";
+import {
+  getEffectBudgetTarget,
+  mergeStatEffects,
+  normalizeChoiceEffectOutcome,
+} from "./effectBudget.js";
+import { INTENT_TAGS, deriveIntentTagsForChoice, deriveIntentTagsForEvent } from "./intentTags.js";
 import { writeSessionLog } from "./sessionLogger.js";
 
 // ═══════════════════════════════════════════════════════════════════
@@ -37,6 +43,24 @@ let publicTunnelUrl = process.env.PUBLIC_URL ?? null;
 
 const RESOURCE_KEYS = ["time", "money", "credits", "health"];
 const EXPERIENCE_KEYS = ["intellect", "connections", "work_tolerance", "action_power", "romance_exp"];
+const STAT_LABELS = {
+  time: "時間",
+  money: "お金",
+  credits: "単位",
+  health: "体力",
+  intellect: "知性",
+  connections: "人間関係",
+  work_tolerance: "働く力",
+  action_power: "行動力",
+  romance_exp: "恋愛経験",
+};
+const RECOVERY_COST_PRIORITY = {
+  money: ["time", "health", "connections", "work_tolerance", "action_power", "intellect", "romance_exp", "credits"],
+  time: ["money", "health", "connections", "work_tolerance", "action_power", "intellect", "romance_exp", "credits"],
+  health: ["time", "money", "connections", "work_tolerance", "action_power", "intellect", "romance_exp", "credits"],
+  credits: ["time", "health", "money", "connections", "work_tolerance", "action_power", "intellect", "romance_exp"],
+  default: ["time", "health", "money", "connections", "work_tolerance", "action_power", "intellect", "romance_exp", "credits"],
+};
 
 const RESOURCE_RANGES = {
   time:    { min: 0,  max: 12 },
@@ -54,11 +78,29 @@ const EXPERIENCE_RANGES = {
 };
 
 const BOARD_FINAL_ROUND = 48;
+const TURN_GROUP_SIZE = 2;
+const TURN_MODES = new Set(["pair", "all"]);
+const TURN_GROUP_RESULT_MS = Number(process.env.TURN_GROUP_RESULT_MS ?? 1500);
+const SEMESTER_CREDIT_BONUS = 10;
+const CREDIT_AUDIT_ROUNDS = new Set([6, 12, 18, 24, 30, 36, 42, 48]);
+const CREDIT_AUDIT_GRACE_GAP = 3;
+const CREDIT_AUDIT_MAX_BONUS = 5;
+const YEAR_END_CREDIT_AUDIT_MAX_BONUS = 7;
+const FINAL_CREDIT_AUDIT_FLOOR = 119;
+const CREDIT_RECOVERY_EVENT_MIN_ROUND = 14;
+const CREDIT_RECOVERY_EVENT_GAP = 18;
+const YEAR_RECAP_ROUNDS = new Set([12, 24, 36]);
+const RECOVERY_COOLDOWN_ROUNDS = 3;
+const RECOVERY_MAX_PER_STAT_PER_YEAR = 1;
 const CREDIT_CHECKPOINTS = {
   12: 30,  // End of Year 1
   24: 62,  // End of Year 2
   36: 96,  // End of Year 3
   48: 124, // Graduation
+};
+const NEGATIVE_RECOVERY_TRIGGER = {
+  money: -1,
+  default: -1,
 };
 
 const SEASON_LABELS = { spring: "春", summer: "夏", autumn: "秋", winter: "冬" };
@@ -88,6 +130,29 @@ function clampExperience(key, value) {
   return Math.max(r.min, Math.min(r.max, value));
 }
 
+function getPlayerStatValue(player, key) {
+  if (RESOURCE_KEYS.includes(key)) return player.resources[key];
+  if (EXPERIENCE_KEYS.includes(key)) return player.experience[key];
+  return undefined;
+}
+
+function findNegativeStat(player) {
+  for (const key of [...RESOURCE_KEYS, ...EXPERIENCE_KEYS]) {
+    const value = getPlayerStatValue(player, key);
+    if (typeof value === "number" && value < 0) {
+      return { key, value };
+    }
+  }
+  return null;
+}
+
+function chooseRecoveryCostStat(player, negativeKey) {
+  const priorities = RECOVERY_COST_PRIORITY[negativeKey] ?? RECOVERY_COST_PRIORITY.default;
+  return priorities.find((key) => key !== negativeKey && (getPlayerStatValue(player, key) ?? 0) > 0)
+    ?? priorities.find((key) => key !== negativeKey)
+    ?? "time";
+}
+
 function diceToSquares(roll) {
   return roll;
 }
@@ -112,6 +177,11 @@ function getRoundInfo(round) {
   };
 }
 
+function expectedCreditsForRound(round) {
+  return CREDIT_CHECKPOINTS[round]
+    ?? Math.round((Math.max(1, Math.min(BOARD_FINAL_ROUND, round)) / BOARD_FINAL_ROUND) * CREDIT_CHECKPOINTS[48]);
+}
+
 function defaultResources() {
   return { time: 10, money: 3, credits: 0, health: 10 };
 }
@@ -120,8 +190,13 @@ function defaultExperience() {
   return { intellect: 1, connections: 1, work_tolerance: 0, action_power: 1, romance_exp: 0 };
 }
 
+function defaultPathScores() {
+  return Object.fromEntries(INTENT_TAGS.map((tag) => [tag, 0]));
+}
+
 function defaultFlags() {
   return {
+    housing: "family",
     living_alone: false,
     has_partner: false,
     has_license: false,
@@ -150,7 +225,15 @@ function defaultGameState() {
     currentEvent: null,
     availableChoiceIds: [],
     lastChoiceResult: null,
+    activeTurnPlayerIds: [],
+    activeTurnEvents: {},
+    availableChoiceIdsByPlayer: {},
+    pendingTurnChoices: {},
+    pendingRecoveryOriginalEvents: {},
+    lastTurnGroupResults: [],
+    yearRecap: null,
     fallbackMode: false,
+    turnMode: "pair",
     startedAt: null,
     turnStartedAt: null,
     roundDurations: [],
@@ -192,7 +275,11 @@ const playerAuth = new Map();
 // ═══════════════════════════════════════════════════════════════════
 
 function getHostUrls() {
-  const urls = new Set([`http://localhost:${PORT}`]);
+  const urls = new Set();
+  if (publicTunnelUrl) {
+    urls.add(publicTunnelUrl);
+  }
+  urls.add(`http://localhost:${PORT}`);
   const nets = os.networkInterfaces();
   Object.values(nets).forEach((entries) => {
     entries?.forEach((entry) => {
@@ -209,9 +296,8 @@ function getHostUrls() {
 function broadcastHostUrls() {
   const urls = getHostUrls();
   for (const [socket, client] of sockets.entries()) {
-    if (socket.readyState === socket.OPEN && client.role === "host") {
-      socket.send(JSON.stringify({ type: "welcome", clientId: client.id, hostId, urls }));
-    }
+    if (socket.readyState !== socket.OPEN || client.role !== "host" || !client.id) continue;
+    sendTo(socket, { type: "welcome", clientId: client.id, hostId, urls });
   }
 }
 
@@ -226,6 +312,14 @@ function broadcast(payload) {
 
 function broadcastState() {
   broadcast({ type: "state", state });
+}
+
+function sendToController(playerId, payload) {
+  for (const [socket, client] of sockets.entries()) {
+    if (socket.readyState !== socket.OPEN) continue;
+    if (client.role !== "controller" || client.id !== playerId) continue;
+    sendTo(socket, payload);
+  }
 }
 
 function broadcastNavigate(url, targetRoles) {
@@ -284,6 +378,11 @@ function createPlayer(clientId, name, faculty) {
     badLuckPoints: 0,
     flagHistory: [],
     choiceHistory: [],
+    pathScores: defaultPathScores(),
+    yearAnchors: [],
+    milestones: [],
+    recoveryCooldowns: {},
+    recoveryUsesByYear: {},
   };
   state.players.push(player);
   return player;
@@ -402,16 +501,29 @@ function removePlayer(playerId) {
   playerAuth.delete(playerId);
   state.turnOrder = state.turnOrder.filter((id) => id !== playerId);
   state.completedTurns = state.completedTurns.filter((id) => id !== playerId);
+  state.activeTurnPlayerIds = state.activeTurnPlayerIds.filter((id) => id !== playerId);
   state.thresholdFiredThisRound.delete(playerId);
   state.lifePlayers = state.lifePlayers.filter((p) => p.id !== playerId);
 
   const pendingLifeChoices = { ...state.pendingLifeChoices };
+  const pendingTurnChoices = { ...state.pendingTurnChoices };
+  const activeTurnEvents = { ...state.activeTurnEvents };
+  const availableChoiceIdsByPlayer = { ...state.availableChoiceIdsByPlayer };
+  const pendingRecoveryOriginalEvents = { ...state.pendingRecoveryOriginalEvents };
   const lifePlayerPositions = { ...state.lifePlayerPositions };
   const lifePlayerRoutes = { ...state.lifePlayerRoutes };
   delete pendingLifeChoices[playerId];
+  delete pendingTurnChoices[playerId];
+  delete activeTurnEvents[playerId];
+  delete availableChoiceIdsByPlayer[playerId];
+  delete pendingRecoveryOriginalEvents[playerId];
   delete lifePlayerPositions[playerId];
   delete lifePlayerRoutes[playerId];
   state.pendingLifeChoices = pendingLifeChoices;
+  state.pendingTurnChoices = pendingTurnChoices;
+  state.activeTurnEvents = activeTurnEvents;
+  state.availableChoiceIdsByPlayer = availableChoiceIdsByPlayer;
+  state.pendingRecoveryOriginalEvents = pendingRecoveryOriginalEvents;
   state.lifePlayerPositions = lifePlayerPositions;
   state.lifePlayerRoutes = lifePlayerRoutes;
 
@@ -425,6 +537,12 @@ function removePlayer(playerId) {
     state.turnIndex = 0;
     state.currentEvent = null;
     state.availableChoiceIds = [];
+    state.activeTurnPlayerIds = [];
+    state.activeTurnEvents = {};
+    state.availableChoiceIdsByPlayer = {};
+    state.pendingTurnChoices = {};
+    state.pendingRecoveryOriginalEvents = {};
+    state.lastTurnGroupResults = [];
     state.lastChoiceResult = null;
     return removedPlayer;
   }
@@ -434,12 +552,14 @@ function removePlayer(playerId) {
   }
 
   if (state.mode !== "life_map") {
-    const currentPlayerStillExists = state.turnOrder[state.turnIndex] !== undefined;
-    if (!currentPlayerStillExists || state.phase === "choosing") {
-      state.phase = "rolling";
-      state.currentEvent = null;
-      state.availableChoiceIds = [];
-      state.lastChoiceResult = null;
+    if (state.phase === "choosing" || state.phase === "rolling") {
+      if (state.activeTurnPlayerIds.length === 0) {
+        prepareNextBoardTurnGroup();
+      } else if (state.phase === "choosing") {
+        tryCompleteBoardTurnGroup();
+      } else {
+        broadcastState();
+      }
     }
   } else {
     tryAdvanceTimelineEvent();
@@ -456,15 +576,14 @@ function removePlayer(playerId) {
  * Get the event ID from the board square at a given position.
  * Events in EVENTS are keyed by position ID (e.g. "1", "9A-1").
  */
-function getEventForPosition(positionId) {
+function getEventForPosition(positionId, player = getCurrentPlayer()) {
   const month = Number(positionId);
   if (VACATION_MONTHS.has(month)) {
-    return buildVacationEvent(month) ?? EVENTS[positionId] ?? null;
+    return buildVacationEvent(month, player) ?? EVENTS[positionId] ?? null;
   }
   if (RANDOM_EVENT_MONTHS.has(month)) {
-    const currentPlayer = getCurrentPlayer();
-    if (currentPlayer) {
-      return pickRandomPoolEvent(currentPlayer) ?? EVENTS[positionId] ?? null;
+    if (player) {
+      return pickRandomPoolEvent(player) ?? EVENTS[positionId] ?? null;
     }
   }
   // Events are keyed by the square ID directly
@@ -502,28 +621,27 @@ function choiceFromPoolItem(item, index) {
   }];
 }
 
-function buildVacationEvent(month) {
+function buildVacationEvent(month, player = getCurrentPlayer()) {
   const vacationType = VACATION_MONTHS.get(month);
-  const currentPlayer = getCurrentPlayer();
-  if (!currentPlayer || !vacationType) return null;
+  if (!player || !vacationType) return null;
 
   const routeChoices = eventListFromPool(VACATION_POOL)
     .filter((item) => {
-      const contextualPlayer = { ...currentPlayer, currentRound: state.currentRound };
+      const contextualPlayer = { ...player, currentRound: state.currentRound };
       const itemType = item.vacationType ?? item.type ?? item.season;
       if (itemType && itemType !== vacationType && itemType !== "both") return false;
       if (item.condition && !meetsCondition(contextualPlayer, item.condition)) return false;
       return true;
     })
     .flatMap(choiceFromPoolItem)
-    .filter((choice) => !choice.condition || meetsCondition({ ...currentPlayer, currentRound: state.currentRound }, choice.condition));
+    .filter((choice) => !choice.condition || meetsCondition({ ...player, currentRound: state.currentRound }, choice.condition));
 
   if (routeChoices.length === 0) return null;
 
   return {
     id: String(month),
     title: vacationType === "summer" ? "夏休みの過ごし方" : "春休みの過ごし方",
-    description: "自由な時間をどう使うかで、次の学期の景色が変わる。",
+    description: "春休みや夏休みの過ごし方で、次の学期の準備が変わる。",
     year: Math.ceil(month / 12),
     category: "vacation",
     pool: "vacation",
@@ -551,10 +669,15 @@ function pickRandomPoolEvent(player) {
   });
   const selected = pickWeighted(available, (event) => {
     const baseWeight = Number(event.weight ?? 1);
+    const eventTags = deriveIntentTagsForEvent(event);
+    const pathScores = { ...defaultPathScores(), ...(player.pathScores ?? {}) };
+    const affinity = eventTags.reduce((sum, tag) => sum + (pathScores[tag] ?? 0), 0);
+    const lowExposureBonus = eventTags.some((tag) => (pathScores[tag] ?? 0) <= 1) ? 1.25 : 1;
+    const pathBonus = 1 + Math.min(0.8, affinity * 0.04);
     if (event.polarity === "positive") {
-      return baseWeight * (1 + 0.3 * Math.max(0, player.badLuckPoints ?? 0));
+      return baseWeight * pathBonus * lowExposureBonus * (1 + 0.3 * Math.max(0, player.badLuckPoints ?? 0));
     }
-    return baseWeight;
+    return baseWeight * pathBonus * lowExposureBonus;
   });
   return selected ? { ...selected, pool: "random" } : null;
 }
@@ -572,10 +695,22 @@ function checkThresholdEvents(player) {
   const res = player.resources;
 
   let result = null;
+  const expectedCredits = expectedCreditsForRound(state.currentRound);
 
+  // 0.5. A rare leave-of-absence branch when health has stayed low.
+  if (!player.flags.on_leave && state.currentRound >= 13 && res.health <= 4 && Math.random() < 0.04) {
+    result = THRESHOLD_EVENTS["休学相談"];
+  }
   // 1. time < 4 AND random < 0.5 -> emergency hospitalization
-  if (res.time < 4 && Math.random() < 0.5) {
+  else if (res.time < 4 && Math.random() < 0.5) {
     result = THRESHOLD_EVENTS["緊急入院"];
+  }
+  // 1.5 credits are critically behind the graduation pace -> formal academic advising
+  else if (
+    state.currentRound >= CREDIT_RECOVERY_EVENT_MIN_ROUND
+    && res.credits < expectedCredits - CREDIT_RECOVERY_EVENT_GAP
+  ) {
+    result = THRESHOLD_EVENTS["単位回収"];
   }
   // 2. time < 6 AND random < 0.2 -> ryuunen crisis
   else if (res.time < 6 && Math.random() < 0.2) {
@@ -592,8 +727,9 @@ function checkThresholdEvents(player) {
 
   if (result) {
     state.thresholdFiredThisRound.add(player.id);
+    return { ...result, effectBudgetTarget: result.effectBudgetTarget ?? 5 };
   }
-  return result;
+  return null;
 }
 
 /**
@@ -608,7 +744,11 @@ function resolveEventChoices(event, player) {
         return {
           ...event,
           description: variant.description ?? event.description,
-          choices: variant.choices,
+          choices: variant.choices.map((choice) => ({
+            ...choice,
+            effectBudgetTarget: choice.effectBudgetTarget ?? 5,
+          })),
+          effectBudgetTarget: 5,
         };
       }
     }
@@ -624,6 +764,58 @@ function filterAvailableChoices(choices, player) {
   return choices.filter((choice) => {
     if (!choice.condition) return true;
     return meetsCondition(contextualPlayer, choice.condition);
+  });
+}
+
+function buildNegativeRecoveryEvent(player) {
+  const negativeStat = findNegativeStat(player);
+  if (!negativeStat) return null;
+  const triggerValue = NEGATIVE_RECOVERY_TRIGGER[negativeStat.key] ?? NEGATIVE_RECOVERY_TRIGGER.default;
+  if (negativeStat.value > triggerValue) return null;
+  if (!canShowRecoveryForStat(player, negativeStat.key)) return null;
+
+  const costKey = chooseRecoveryCostStat(player, negativeStat.key);
+  const recoveryAmount = Math.abs(negativeStat.value);
+  const recoveryLabel = STAT_LABELS[negativeStat.key] ?? negativeStat.key;
+  const costLabel = STAT_LABELS[costKey] ?? costKey;
+
+  return {
+    id: `negative_recovery:${negativeStat.key}`,
+    title: `${recoveryLabel}の立て直し`,
+    description: `${recoveryLabel}がマイナスになっている。${costLabel}を使って、いったん0まで戻せる。`,
+    year: Math.ceil(state.currentRound / 12),
+    category: "救済",
+    choices: [
+      {
+        id: `negative_recovery:${negativeStat.key}:accept`,
+        label: `${costLabel}を使って${recoveryLabel}を0に戻す`,
+        effects: {
+          [negativeStat.key]: recoveryAmount,
+          [costKey]: -recoveryAmount,
+        },
+        preserveEffects: true,
+        polarity: "mixed",
+        intentTags: ["rest"],
+      },
+      {
+        id: "negative_recovery:skip",
+        label: "救済を受けず、本来のイベントへ進む",
+        effects: {},
+        preserveEffects: true,
+        skipRecovery: true,
+        polarity: "mixed",
+        intentTags: ["risk"],
+      },
+    ],
+  };
+}
+
+function effectBudgetTargetFor(event, choice) {
+  return getEffectBudgetTarget({
+    choice,
+    event,
+    isThresholdEvent: event.effectBudgetTarget === 5,
+    targetTotal: choice.effectBudgetTarget ?? event.effectBudgetTarget,
   });
 }
 
@@ -651,7 +843,16 @@ function applyEffects(player, effects) {
  */
 function applyFlagEffects(player, flagEffects) {
   if (!flagEffects) return;
-  for (const [key, value] of Object.entries(flagEffects)) {
+  const normalizedFlagEffects = { ...flagEffects };
+  if (normalizedFlagEffects.housing) {
+    normalizedFlagEffects.living_alone = normalizedFlagEffects.housing === "alone";
+  } else if (normalizedFlagEffects.living_alone === true) {
+    normalizedFlagEffects.housing = "alone";
+  } else if (normalizedFlagEffects.living_alone === false && !player.flags.housing) {
+    normalizedFlagEffects.housing = "family";
+  }
+
+  for (const [key, value] of Object.entries(normalizedFlagEffects)) {
     player.flags[key] = value;
     // Track truthy flags in history
     if (value && value !== "none" && !player.flagHistory.includes(key)) {
@@ -703,6 +904,15 @@ function mergeEffects(target, effects) {
   }
 }
 
+function mergeFlagEffects(...effectsList) {
+  const merged = {};
+  for (const effects of effectsList) {
+    if (!effects) continue;
+    Object.assign(merged, effects);
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 function effectsPolarity(effects) {
   const values = Object.entries(effects ?? {})
     .filter(([key]) => key !== "credits")
@@ -730,10 +940,10 @@ function updateBadLuck(player, event, choice, appliedEffects) {
 }
 
 function resolveReflectionForResult(result) {
-  const endingId = result.ending?.id
-    ?? result.academicStatus?.id
+  const endingId = result.storyAward?.id
     ?? result.lifeArchetype?.id
-    ?? result.storyAward?.id;
+    ?? result.academicStatus?.id
+    ?? result.ending?.id;
   return REFLECTION_GUIDE[endingId] ?? REFLECTION_GUIDE.default;
 }
 
@@ -785,7 +995,52 @@ function recordTurnDuration(player) {
   ].slice(-20);
 }
 
+function ensurePlayerPathState(player) {
+  player.pathScores = {
+    ...defaultPathScores(),
+    ...(player.pathScores ?? {}),
+  };
+  player.yearAnchors = player.yearAnchors ?? [];
+  player.milestones = player.milestones ?? [];
+  player.recoveryCooldowns = player.recoveryCooldowns ?? {};
+  player.recoveryUsesByYear = player.recoveryUsesByYear ?? {};
+}
+
+function applyIntentScore(player, intentTags, weight = 1) {
+  ensurePlayerPathState(player);
+  for (const tag of intentTags ?? []) {
+    if (!INTENT_TAGS.includes(tag)) continue;
+    player.pathScores[tag] = (player.pathScores[tag] ?? 0) + weight;
+  }
+}
+
+function shouldRecordMilestone(event, choice, intentTags) {
+  if (choice.resultWeight && choice.resultWeight >= 2) return true;
+  if (choice.flagEffects || choice.setFlags || choice.dynamicRandomChance || choice.cheatAction) return true;
+  if (intentTags.some((tag) => ["research", "romance", "career", "creative"].includes(tag))) return true;
+  return state.currentRound % 12 === 0;
+}
+
+function recordMilestone(player, event, choice, intentTags, storyTags) {
+  if (!shouldRecordMilestone(event, choice, intentTags)) return;
+  const milestone = {
+    round: state.currentRound,
+    eventId: event.id,
+    eventTitle: event.title,
+    choiceId: choice.id,
+    choiceLabel: choice.label,
+    intentTags,
+    storyTags,
+  };
+  player.milestones = [...(player.milestones ?? []), milestone].slice(-10);
+}
+
 function recordChoiceHistory(player, event, choice, appliedEffects, flagEffects, submittedBy) {
+  const intentTags = deriveIntentTagsForChoice(choice, event);
+  const storyTags = choice.storyTags ?? event.storyTags ?? [];
+  applyIntentScore(player, intentTags, Number(choice.resultWeight ?? 1));
+  recordMilestone(player, event, choice, intentTags, storyTags);
+
   const entry = {
     round: state.currentRound,
     eventId: event.id,
@@ -794,9 +1049,41 @@ function recordChoiceHistory(player, event, choice, appliedEffects, flagEffects,
     choiceLabel: choice.label,
     effects: appliedEffects,
     flagEffects,
+    intentTags,
+    storyTags,
     submittedBy,
   };
   player.choiceHistory = [...(player.choiceHistory ?? []), entry];
+}
+
+function getRecoveryYearKey(statKey) {
+  return `${Math.ceil(state.currentRound / 12)}:${statKey}`;
+}
+
+function canShowRecoveryForStat(player, statKey) {
+  ensurePlayerPathState(player);
+  if ((player.recoveryCooldowns[statKey] ?? 0) > 0) return false;
+  const yearKey = getRecoveryYearKey(statKey);
+  return (player.recoveryUsesByYear[yearKey] ?? 0) < RECOVERY_MAX_PER_STAT_PER_YEAR;
+}
+
+function noteRecoveryUsed(player, statKey) {
+  ensurePlayerPathState(player);
+  player.recoveryCooldowns[statKey] = RECOVERY_COOLDOWN_ROUNDS;
+  const yearKey = getRecoveryYearKey(statKey);
+  player.recoveryUsesByYear[yearKey] = (player.recoveryUsesByYear[yearKey] ?? 0) + 1;
+}
+
+function tickRecoveryCooldowns(player) {
+  ensurePlayerPathState(player);
+  const nextCooldowns = {};
+  for (const [key, value] of Object.entries(player.recoveryCooldowns)) {
+    const nextValue = Math.max(0, Number(value) - 1);
+    if (nextValue > 0) {
+      nextCooldowns[key] = nextValue;
+    }
+  }
+  player.recoveryCooldowns = nextCooldowns;
 }
 
 function getCurrentTimelineEvent() {
@@ -841,7 +1128,8 @@ function presentTimelineEvent() {
   state.availableChoiceIds = publicEvent.choices.map((choice) => choice.id);
   state.pendingLifeChoices = {};
   state.pendingLifeResults = {};
-  state.currentChoiceMode = event.choiceMode ?? "sequential";
+  // Master feature: per-event choice mode (simultaneous reveals together vs sequential broadcasts each)
+  state.currentChoiceMode = event.choiceMode === "simultaneous" ? "simultaneous" : "sequential";
   state.lastChoiceResult = null;
   state.turnStartedAt = Date.now();
   setLifePlayersAtSquare(getSeasonHubSquareId(event));
@@ -881,6 +1169,15 @@ function processTimelineChoice(player, choiceId, submittedBy = "controller") {
   state.pendingLifeResults[player.id] = result;
   recordChoiceHistory(player, event, choice, visibleEffects, choice.flagEffects ?? choice.setFlags, submittedBy);
 
+  // Master feature: simultaneous mode holds results until everyone is done.
+  // Sequential mode broadcasts each result immediately (original codex behavior).
+  if (state.currentChoiceMode === "simultaneous") {
+    if (!state.pendingLifeResults) state.pendingLifeResults = {};
+    state.pendingLifeResults[player.id] = result;
+  } else {
+    broadcast({ type: "choice_result", result });
+  }
+
   if (state.currentChoiceMode === "simultaneous") {
     // 一斉モード: 全員揃うまで結果を隠す
     if (tryAdvanceTimelineEvent(event)) {
@@ -907,16 +1204,19 @@ function tryAdvanceTimelineEvent(event = getCurrentTimelineEvent()) {
     return false;
   }
 
+  // Master feature: in simultaneous mode, reveal all choices together
+  // and wait for the host to advance (state.phase = "revealed").
   if (state.currentChoiceMode === "simultaneous") {
-    // 一斉モード: 結果開示フェーズに移行し、ホストの確認を待つ
-    const results = activePlayerIds.map((playerId) => state.pendingLifeResults[playerId]).filter(Boolean);
+    const results = activePlayerIds
+      .map((playerId) => state.pendingLifeResults?.[playerId])
+      .filter(Boolean);
     state.phase = "revealed";
     broadcast({ type: "all_choices_revealed", results });
     broadcastState();
     return true;
   }
 
-  // 個別モード: 即座に次のイベントへ
+  // Sequential mode: immediately advance to the next event (codex behavior).
   state.lifePlayers = state.lifePlayers.map((lifePlayer) => {
     const selectedId = state.pendingLifeChoices[lifePlayer.id];
     const selectedChoice = event.choices.find((c) => c.id === selectedId);
@@ -933,6 +1233,7 @@ function tryAdvanceTimelineEvent(event = getCurrentTimelineEvent()) {
   return true;
 }
 
+// Master feature: advance after the host reviews all simultaneous results.
 function advanceAfterReveal() {
   if (state.mode !== "life_map" || state.phase !== "revealed") return;
   const event = getCurrentTimelineEvent();
@@ -942,7 +1243,7 @@ function advanceAfterReveal() {
     const selectedId = state.pendingLifeChoices[lifePlayer.id];
     const selectedChoice = event.choices.find((c) => c.id === selectedId);
     if (!selectedChoice) return lifePlayer;
-    return applyTimelineChoice(lifePlayer, event, selectedChoice, state.choicePhilosophy);
+    return applyTimelineChoice(lifePlayer, event, selectedChoice);
   });
 
   state.currentSeasonIndex += 1;
@@ -976,6 +1277,12 @@ function endTimelineGame() {
   state.phase = "result";
   state.currentEvent = null;
   state.availableChoiceIds = [];
+  state.activeTurnPlayerIds = [];
+  state.activeTurnEvents = {};
+  state.availableChoiceIdsByPlayer = {};
+  state.pendingTurnChoices = {};
+  state.pendingRecoveryOriginalEvents = {};
+  state.yearRecap = null;
   state.lastChoiceResult = null;
 
   writeSessionLogIfPossible(results);
@@ -990,6 +1297,55 @@ function getCurrentPlayer() {
   if (state.turnOrder.length === 0) return null;
   const playerId = state.turnOrder[state.turnIndex];
   return state.players.find((p) => p.id === playerId) ?? null;
+}
+
+function getPlayerById(playerId) {
+  return state.players.find((player) => player.id === playerId) ?? null;
+}
+
+function isPlayerActiveInBoardGroup(playerId) {
+  return state.mode !== "life_map" && state.activeTurnPlayerIds.includes(playerId);
+}
+
+function selectNextBoardTurnGroup() {
+  const remainingIds = state.turnOrder
+    .filter((id) => !state.completedTurns.includes(id))
+    .filter((id) => getPlayerById(id)?.online);
+  const nextIds = state.turnMode === "all"
+    ? remainingIds
+    : remainingIds.slice(0, TURN_GROUP_SIZE);
+
+  state.activeTurnPlayerIds = nextIds;
+  state.turnIndex = nextIds.length > 0 ? Math.max(0, state.turnOrder.indexOf(nextIds[0])) : 0;
+  return nextIds;
+}
+
+function clearBoardTurnEventState({ clearResults = false } = {}) {
+  state.currentEvent = null;
+  state.availableChoiceIds = [];
+  state.activeTurnEvents = {};
+  state.availableChoiceIdsByPlayer = {};
+  state.pendingTurnChoices = {};
+  state.pendingRecoveryOriginalEvents = {};
+  state.lastChoiceResult = null;
+  if (clearResults) {
+    state.lastTurnGroupResults = [];
+  }
+}
+
+function prepareNextBoardTurnGroup() {
+  clearBoardTurnEventState();
+  state.lastRoll = null;
+  state.turnStartedAt = null;
+
+  const nextIds = selectNextBoardTurnGroup();
+  if (nextIds.length === 0) {
+    endRound();
+    return;
+  }
+
+  state.phase = "rolling";
+  broadcastState();
 }
 
 /**
@@ -1008,11 +1364,7 @@ function movePlayer(player, squaresToMove) {
   player.position = currentPos;
 }
 
-/**
- * Present the event for the current player's position.
- * Sets state phase to "choosing" and broadcasts show_event.
- */
-function presentEvent(player) {
+function prepareBoardEventForPlayer(player) {
   // Branch points always show their own event (route selection)
   const square = BOARD[player.position];
   const isBranchPoint = square && square.type === "branch_point";
@@ -1024,13 +1376,11 @@ function presentEvent(player) {
   }
 
   if (!event) {
-    event = getEventForPosition(player.position);
+    event = getEventForPosition(player.position, player);
   }
 
   if (!event) {
-    // No event (e.g. at goal) — auto-advance turn
-    advanceTurn();
-    return;
+    return null;
   }
 
   // Resolve conditional variants
@@ -1038,114 +1388,379 @@ function presentEvent(player) {
 
   // If no choices (branch point / goal), auto-advance
   if (!resolvedEvent.choices || resolvedEvent.choices.length === 0) {
-    advanceTurn();
-    return;
+    return null;
   }
 
   // Filter available choices
   const available = filterAvailableChoices(resolvedEvent.choices, player);
 
   if (available.length === 0) {
-    // No choices available — auto-advance
-    advanceTurn();
-    return;
+    return null;
   }
 
   const availableIds = available.map((c) => c.id);
+  const original = { event: resolvedEvent, availableIds };
+  const recoveryEvent = buildNegativeRecoveryEvent(player);
+  if (recoveryEvent) {
+    return {
+      event: recoveryEvent,
+      availableIds: recoveryEvent.choices.map((choice) => choice.id),
+      recoveryOriginal: original,
+    };
+  }
+
+  return { event: resolvedEvent, availableIds };
+}
+
+/**
+ * Present one shared turn window for up to two active board players.
+ */
+function presentBoardTurnGroupEvents(triggeringPlayer) {
+  if (!isPlayerActiveInBoardGroup(triggeringPlayer.id)) return;
+  const activePlayers = state.activeTurnPlayerIds
+    .map(getPlayerById)
+    .filter((player) => player && player.online);
+  if (activePlayers.length === 0) {
+    prepareNextBoardTurnGroup();
+    return;
+  }
+
+  const monthSquare = String(Math.min(state.currentRound, BOARD_FINAL_ROUND));
+  const activeTurnEvents = {};
+  const availableChoiceIdsByPlayer = {};
+  const pendingRecoveryOriginalEvents = {};
+  let leadEvent = null;
+  let leadAvailableIds = [];
+
+  for (const player of activePlayers) {
+    player.position = monthSquare;
+    player.lastRoll = 1;
+    const prepared = prepareBoardEventForPlayer(player);
+    if (!prepared) {
+      state.completedTurns.push(player.id);
+      continue;
+    }
+    activeTurnEvents[player.id] = prepared.event;
+    availableChoiceIdsByPlayer[player.id] = prepared.availableIds;
+    if (prepared.recoveryOriginal) {
+      pendingRecoveryOriginalEvents[player.id] = prepared.recoveryOriginal;
+    }
+    if (!leadEvent) {
+      leadEvent = prepared.event;
+      leadAvailableIds = prepared.availableIds;
+    }
+  }
+
+  const eventPlayerIds = Object.keys(activeTurnEvents);
+  state.activeTurnPlayerIds = state.activeTurnPlayerIds.filter((id) => eventPlayerIds.includes(id));
+  if (!leadEvent || state.activeTurnPlayerIds.length === 0) {
+    prepareNextBoardTurnGroup();
+    return;
+  }
 
   state.phase = "choosing";
-  state.currentEvent = resolvedEvent;
-  state.availableChoiceIds = availableIds;
+  state.currentEvent = leadEvent;
+  state.availableChoiceIds = leadAvailableIds;
+  state.activeTurnEvents = activeTurnEvents;
+  state.availableChoiceIdsByPlayer = availableChoiceIdsByPlayer;
+  state.pendingRecoveryOriginalEvents = pendingRecoveryOriginalEvents;
+  state.pendingTurnChoices = {};
+  state.lastTurnGroupResults = [];
+  state.lastChoiceResult = null;
   state.turnStartedAt = Date.now();
 
-  broadcast({
-    type: "show_event",
-    event: resolvedEvent,
-    availableChoiceIds: availableIds,
-    playerId: player.id,
-  });
+  for (const playerId of state.activeTurnPlayerIds) {
+    sendToController(playerId, {
+      type: "show_event",
+      event: activeTurnEvents[playerId],
+      availableChoiceIds: availableChoiceIdsByPlayer[playerId],
+      playerId,
+    });
+  }
+
+  state.lastRoll = {
+    playerId: triggeringPlayer.id,
+    playerName: triggeringPlayer.name,
+    value: 1,
+    squaresAdvanced: 1,
+  };
+
   broadcastState();
 }
 
 function rollForPlayer(player) {
-  const monthSquare = String(Math.min(state.currentRound, BOARD_FINAL_ROUND));
-  const roll = 1;
-  const squaresToMove = 1;
+  if (state.mode !== "life_map") {
+    presentBoardTurnGroupEvents(player);
+    return;
+  }
+}
 
-  player.position = monthSquare;
-  player.lastRoll = roll;
-
-  state.lastRoll = {
-    playerId: player.id,
-    playerName: player.name,
-    value: roll,
-    squaresAdvanced: squaresToMove,
+function buildYearAnchorEvent(year) {
+  const nextYear = Math.min(4, year + 1);
+  return {
+    id: `year_anchor:${year}`,
+    title: `${nextYear}年目の方針`,
+    description: "ここから何を大事にするかを決める。すぐに点数は動かないが、この後のイベントと最終結果に残る。",
+    year,
+    category: "方針",
+    choices: [
+      {
+        id: `year_anchor:${year}:study`,
+        label: "授業と研究の土台を固める",
+        effects: {},
+        preserveEffects: true,
+        yearAnchor: true,
+        intentTags: ["study", "research"],
+        storyTags: ["学びの軸"],
+        resultWeight: 2,
+      },
+      {
+        id: `year_anchor:${year}:social`,
+        label: "友人関係と居場所を広げる",
+        effects: {},
+        preserveEffects: true,
+        yearAnchor: true,
+        intentTags: ["social", "community"],
+        storyTags: ["人間関係"],
+        resultWeight: 2,
+      },
+      {
+        id: `year_anchor:${year}:romance`,
+        label: "恋愛もちゃんと大事にする",
+        effects: {},
+        preserveEffects: true,
+        yearAnchor: true,
+        intentTags: ["romance", "social"],
+        storyTags: ["恋愛"],
+        resultWeight: 2,
+      },
+      {
+        id: `year_anchor:${year}:creative`,
+        label: "趣味や制作に踏み込む",
+        effects: {},
+        preserveEffects: true,
+        yearAnchor: true,
+        intentTags: ["creative", "adventure"],
+        storyTags: ["制作"],
+        resultWeight: 2,
+      },
+      {
+        id: `year_anchor:${year}:career`,
+        label: "進路を早めに見る",
+        effects: {},
+        preserveEffects: true,
+        yearAnchor: true,
+        intentTags: ["career", "work"],
+        storyTags: ["進路"],
+        resultWeight: 2,
+      },
+      {
+        id: `year_anchor:${year}:rest`,
+        label: "生活リズムと余白を守る",
+        effects: {},
+        preserveEffects: true,
+        yearAnchor: true,
+        intentTags: ["rest"],
+        storyTags: ["生活"],
+        resultWeight: 2,
+      },
+    ],
   };
+}
 
-  presentEvent(player);
+function presentYearAnchorEvent(finishedRound) {
+  const year = Math.ceil(finishedRound / 12);
+  const event = buildYearAnchorEvent(year);
+  const activeIds = state.players
+    .filter((player) => player.online)
+    .map((player) => player.id);
+
+  if (activeIds.length === 0) {
+    startNextBoardRound(finishedRound);
+    return;
+  }
+
+  const availableIds = event.choices.map((choice) => choice.id);
+  state.phase = "choosing";
+  state.yearRecap = null;
+  state.activeTurnPlayerIds = activeIds;
+  state.turnIndex = 0;
+  state.currentEvent = event;
+  state.availableChoiceIds = availableIds;
+  state.activeTurnEvents = Object.fromEntries(activeIds.map((id) => [id, event]));
+  state.availableChoiceIdsByPlayer = Object.fromEntries(activeIds.map((id) => [id, availableIds]));
+  state.pendingTurnChoices = {};
+  state.pendingRecoveryOriginalEvents = {};
+  state.lastTurnGroupResults = [];
+  state.lastChoiceResult = null;
+  state.turnStartedAt = Date.now();
+  for (const playerId of activeIds) {
+    sendToController(playerId, {
+      type: "show_event",
+      event,
+      availableChoiceIds: availableIds,
+      playerId,
+    });
+  }
+  broadcastState();
 }
 
 function submitChoiceForPlayer(player, choiceId, submittedBy = "controller") {
-  if (!state.availableChoiceIds.includes(choiceId)) return false;
-
   if (state.mode === "life_map") {
+    if (!state.availableChoiceIds.includes(choiceId)) return false;
     processTimelineChoice(player, choiceId, submittedBy);
     return true;
   }
 
-  const currentPlayer = getCurrentPlayer();
-  if (!currentPlayer || currentPlayer.id !== player.id) return false;
-  processChoice(currentPlayer, choiceId, submittedBy);
+  if (!isPlayerActiveInBoardGroup(player.id)) return false;
+  const availableIds = state.availableChoiceIdsByPlayer[player.id] ?? [];
+  if (!availableIds.includes(choiceId)) return false;
+  if (state.pendingTurnChoices[player.id]) return false;
+
+  processBoardGroupChoice(player, choiceId, submittedBy);
   return true;
+}
+
+function refreshLeadBoardEvent() {
+  const leadPlayerId = state.activeTurnPlayerIds.find((id) => state.activeTurnEvents[id]);
+  state.currentEvent = leadPlayerId ? state.activeTurnEvents[leadPlayerId] : null;
+  state.availableChoiceIds = leadPlayerId ? state.availableChoiceIdsByPlayer[leadPlayerId] ?? [] : [];
+}
+
+function returnToRecoveryOriginalEvent(player) {
+  const original = state.pendingRecoveryOriginalEvents?.[player.id];
+  if (!original) return false;
+  const recoveryEventId = state.activeTurnEvents[player.id]?.id ?? "";
+  const recoveryStatKey = recoveryEventId.startsWith("negative_recovery:")
+    ? recoveryEventId.split(":")[1]
+    : null;
+  if (recoveryStatKey) {
+    noteRecoveryUsed(player, recoveryStatKey);
+  }
+
+  state.activeTurnEvents = {
+    ...state.activeTurnEvents,
+    [player.id]: original.event,
+  };
+  state.availableChoiceIdsByPlayer = {
+    ...state.availableChoiceIdsByPlayer,
+    [player.id]: original.availableIds,
+  };
+  const pendingRecoveryOriginalEvents = { ...state.pendingRecoveryOriginalEvents };
+  delete pendingRecoveryOriginalEvents[player.id];
+  state.pendingRecoveryOriginalEvents = pendingRecoveryOriginalEvents;
+  refreshLeadBoardEvent();
+
+  sendToController(player.id, {
+    type: "show_event",
+    event: original.event,
+    availableChoiceIds: original.availableIds,
+    playerId: player.id,
+  });
+  broadcastState();
+  return true;
+}
+
+function addCompletedTurn(playerId) {
+  if (!state.completedTurns.includes(playerId)) {
+    state.completedTurns.push(playerId);
+  }
+}
+
+function processYearAnchorChoice(player, event, choice, submittedBy) {
+  const year = Number(event.id.split(":")[1]);
+  const intentTags = deriveIntentTagsForChoice(choice, event);
+  const storyTags = choice.storyTags ?? [];
+  ensurePlayerPathState(player);
+  player.yearAnchors = [
+    ...player.yearAnchors.filter((anchor) => anchor.year !== year),
+    {
+      year,
+      choiceId: choice.id,
+      choiceLabel: choice.label,
+      intentTags,
+      storyTags,
+    },
+  ].sort((a, b) => a.year - b.year);
+  applyIntentScore(player, intentTags, Number(choice.resultWeight ?? 2));
+  recordMilestone(player, event, choice, intentTags, storyTags);
+
+  const result = {
+    playerId: player.id,
+    playerName: player.name,
+    choiceId: choice.id,
+    choiceLabel: choice.label,
+    effects: {},
+    intentTags,
+    storyTags,
+    submittedBy,
+  };
+
+  state.lastChoiceResult = result;
+  state.pendingTurnChoices[player.id] = choice.id;
+  state.lastTurnGroupResults = [
+    ...state.lastTurnGroupResults.filter((entry) => entry.playerId !== player.id),
+    result,
+  ];
+  broadcast({ type: "choice_result", result });
+  tryCompleteBoardTurnGroup();
 }
 
 /**
  * Process a player's choice.
  */
-function processChoice(player, choiceId, submittedBy = "controller") {
-  const event = state.currentEvent;
+function processBoardGroupChoice(player, choiceId, submittedBy = "controller") {
+  const event = state.activeTurnEvents[player.id] ?? state.currentEvent;
   if (!event) return;
 
   const choice = event.choices.find((c) => c.id === choiceId);
   if (!choice) return;
 
-  // Build the combined effects that will be reported
-  const appliedEffects = { ...choice.effects };
+  if (choice.skipRecovery) {
+    returnToRecoveryOriginalEvent(player);
+    return;
+  }
+  if (choice.yearAnchor || event.id.startsWith("year_anchor:")) {
+    processYearAnchorChoice(player, event, choice, submittedBy);
+    return;
+  }
+  if (event.id.startsWith("negative_recovery:")) {
+    const recoveryStatKey = event.id.split(":")[1];
+    if (recoveryStatKey) {
+      noteRecoveryUsed(player, recoveryStatKey);
+    }
+  }
+
   const flagEffects = choice.flagEffects ?? choice.setFlags;
   let randomOutcome;
-
-  // Apply base effects
-  applyEffects(player, choice.effects);
-
-  // Apply flag effects
-  if (flagEffects) {
-    applyFlagEffects(player, flagEffects);
-  }
+  let randomEffects = {};
+  let specialConsequenceEffects = {};
+  let randomFlagEffects = null;
+  let forcedFlagEffects = null;
 
   if (choice.dynamicRandomChance?.formula === "romance_success") {
     const success = Math.random() < calcRomanceChance(player);
-    const randomEffects = success
+    randomEffects = success
       ? choice.dynamicRandomChance.onSuccess
       : choice.dynamicRandomChance.onFailure;
-    applyEffects(player, randomEffects);
-    mergeEffects(appliedEffects, randomEffects);
+    randomFlagEffects = success
+      ? choice.dynamicRandomChance.onSuccessFlags
+      : choice.dynamicRandomChance.onFailureFlags;
     randomOutcome = success ? "success" : "failure";
   }
 
   if (choice.cheatAction && player.flags.has_partner) {
     const exposed = Math.random() < 0.7;
     if (exposed) {
-      const exposedEffects = {
+      specialConsequenceEffects = {
         romance_exp: -5,
         connections: -4,
         health: -3,
       };
-      applyEffects(player, exposedEffects);
-      mergeEffects(appliedEffects, exposedEffects);
-      applyFlagEffects(player, { has_partner: false, cheating: false });
+      forcedFlagEffects = { has_partner: false, cheating: false };
       randomOutcome = "cheat_exposed";
     } else {
-      applyFlagEffects(player, { cheating: true });
+      forcedFlagEffects = { cheating: true };
       randomOutcome = "cheat_hidden";
     }
   }
@@ -1154,25 +1769,46 @@ function processChoice(player, choiceId, submittedBy = "controller") {
   if (choice.randomChance !== undefined) {
     const roll = Math.random();
     if (roll < choice.randomChance) {
-      // Bonus
-      if (choice.randomBonusEffects && Object.keys(choice.randomBonusEffects).length > 0) {
-        applyEffects(player, choice.randomBonusEffects);
-        // Merge bonus into applied effects for display
-        mergeEffects(appliedEffects, choice.randomBonusEffects);
-      }
+      randomEffects = choice.randomBonusEffects ?? {};
     } else {
-      // Penalty
-      if (choice.randomPenaltyEffects && Object.keys(choice.randomPenaltyEffects).length > 0) {
-        applyEffects(player, choice.randomPenaltyEffects);
-        // Merge penalty into applied effects for display
-        mergeEffects(appliedEffects, choice.randomPenaltyEffects);
-      }
+      randomEffects = choice.randomPenaltyEffects ?? {};
     }
   }
 
+  const appliedEffects = choice.preserveEffects
+    ? mergeStatEffects(choice.effects, randomEffects)
+    : normalizeChoiceEffectOutcome(choice, randomEffects, {
+      event,
+      targetTotal: effectBudgetTargetFor(event, choice),
+    });
+  applyEffects(player, appliedEffects);
+  if (Object.keys(specialConsequenceEffects).length > 0) {
+    applyEffects(player, specialConsequenceEffects);
+    mergeEffects(appliedEffects, specialConsequenceEffects);
+  }
+
+  // Apply flag effects
+  if (flagEffects) {
+    applyFlagEffects(player, flagEffects);
+  }
+  if (randomFlagEffects) {
+    applyFlagEffects(player, randomFlagEffects);
+  }
+  if (forcedFlagEffects) {
+    applyFlagEffects(player, forcedFlagEffects);
+  }
+  if (state.pendingRecoveryOriginalEvents?.[player.id]) {
+    const pendingRecoveryOriginalEvents = { ...state.pendingRecoveryOriginalEvents };
+    delete pendingRecoveryOriginalEvents[player.id];
+    state.pendingRecoveryOriginalEvents = pendingRecoveryOriginalEvents;
+  }
+
+  const reportedFlagEffects = mergeFlagEffects(flagEffects, randomFlagEffects, forcedFlagEffects);
+  const intentTags = deriveIntentTagsForChoice(choice, event);
+  const storyTags = choice.storyTags ?? event.storyTags ?? [];
   updateBadLuck(player, event, choice, appliedEffects);
   recordTurnDuration(player);
-  recordChoiceHistory(player, event, choice, appliedEffects, flagEffects, submittedBy);
+  recordChoiceHistory(player, event, choice, appliedEffects, reportedFlagEffects, submittedBy);
 
   const result = {
     playerId: player.id,
@@ -1180,11 +1816,19 @@ function processChoice(player, choiceId, submittedBy = "controller") {
     choiceId: choice.id,
     choiceLabel: choice.label,
     effects: appliedEffects,
-    flagEffects,
+    flagEffects: reportedFlagEffects,
+    intentTags,
+    storyTags,
     randomOutcome,
+    submittedBy,
   };
 
   state.lastChoiceResult = result;
+  state.pendingTurnChoices[player.id] = choiceId;
+  state.lastTurnGroupResults = [
+    ...state.lastTurnGroupResults.filter((entry) => entry.playerId !== player.id),
+    result,
+  ];
 
   broadcast({ type: "choice_result", result });
 
@@ -1193,53 +1837,146 @@ function processChoice(player, choiceId, submittedBy = "controller") {
     player.position = choice.branchRoute;
   }
 
-  // Advance turn
-  advanceTurn();
+  tryCompleteBoardTurnGroup();
 }
 
 /**
  * Advance to the next player's turn, or end the round.
  */
-function advanceTurn() {
-  const currentPlayerId = state.turnOrder[state.turnIndex];
-  if (currentPlayerId && !state.completedTurns.includes(currentPlayerId)) {
-    state.completedTurns.push(currentPlayerId);
+function tryCompleteBoardTurnGroup() {
+  const activeIds = state.activeTurnPlayerIds.filter((id) => getPlayerById(id)?.online);
+  if (activeIds.length === 0) {
+    prepareNextBoardTurnGroup();
+    return true;
   }
 
-  // Clear event state
+  const allDone = activeIds.every((id) => state.pendingTurnChoices[id]);
+  if (!allDone) {
+    broadcastState();
+    return false;
+  }
+
+  const completedYearAnchorRound = state.currentEvent?.id?.startsWith("year_anchor:")
+    ? state.currentRound
+    : null;
+
+  for (const id of activeIds) {
+    addCompletedTurn(id);
+  }
+
+  state.phase = "animating";
   state.currentEvent = null;
   state.availableChoiceIds = [];
+  state.activeTurnEvents = {};
+  state.availableChoiceIdsByPlayer = {};
+  state.pendingTurnChoices = {};
+  state.pendingRecoveryOriginalEvents = {};
+  broadcastState();
 
-  // Check if all players have completed their turn this round
-  const allDone = state.turnOrder.every((id) => state.completedTurns.includes(id));
+  setTimeout(() => {
+    if (state.mode !== "life_map" && state.phase === "animating") {
+      if (completedYearAnchorRound !== null) {
+        startNextBoardRound(completedYearAnchorRound);
+      } else {
+        prepareNextBoardTurnGroup();
+      }
+    }
+  }, TURN_GROUP_RESULT_MS);
+  return true;
+}
 
-  if (allDone) {
-    endRound();
-  } else {
-    // Find next player who hasn't completed their turn
-    let nextIndex = (state.turnIndex + 1) % state.turnOrder.length;
-    let attempts = 0;
-    while (state.completedTurns.includes(state.turnOrder[nextIndex]) && attempts < state.turnOrder.length) {
-      nextIndex = (nextIndex + 1) % state.turnOrder.length;
-      attempts++;
+function topExperienceLabels(player) {
+  const labels = {
+    intellect: "学び",
+    connections: "人間関係",
+    work_tolerance: "働く力",
+    action_power: "行動力",
+    romance_exp: "恋愛経験",
+  };
+  return Object.entries(player.experience)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 2)
+    .map(([key]) => labels[key] ?? key);
+}
+
+function warningSignsForPlayer(player, expectedCredits) {
+  const warnings = [];
+  if (player.resources.credits < expectedCredits - 8) warnings.push("単位の挽回が必要");
+  if (player.resources.health <= 4) warnings.push("体力が落ち気味");
+  if (player.resources.time <= 4) warnings.push("時間に余裕がない");
+  if (player.resources.money <= 0) warnings.push("金欠気味");
+  if (warnings.length === 0) warnings.push("大きな危険サインなし");
+  return warnings;
+}
+
+function creditStatusFor(credits, expectedCredits) {
+  if (credits >= expectedCredits + 4) return "順調";
+  if (credits >= expectedCredits - 4) return "少し遅れ";
+  if (credits >= expectedCredits - 12) return "挽回可能";
+  return "要注意";
+}
+
+function graduationOutlookFor(credits, round) {
+  const projected = Math.round((credits / round) * BOARD_FINAL_ROUND);
+  if (projected >= CREDIT_CHECKPOINTS[48] + 8) return "卒業見込みはかなり安定";
+  if (projected >= CREDIT_CHECKPOINTS[48]) return "卒業見込みあり";
+  if (projected >= 108) return "追加履修で届く";
+  return "集中講義や補講が必要";
+}
+
+function buildYearRecap(finishedRound) {
+  const year = Math.ceil(finishedRound / 12);
+  const expectedCredits = expectedCreditsForRound(finishedRound);
+  return {
+    year,
+    round: finishedRound,
+    title: `${year}年終了時点の状態`,
+    players: state.players.map((player) => ({
+      playerId: player.id,
+      playerName: player.name,
+      credits: player.resources.credits,
+      creditStatus: creditStatusFor(player.resources.credits, expectedCredits),
+      graduationOutlook: graduationOutlookFor(player.resources.credits, finishedRound),
+      strengths: topExperienceLabels(player),
+      warningSigns: warningSignsForPlayer(player, expectedCredits),
+      resources: { ...player.resources },
+      experience: { ...player.experience },
+    })),
+  };
+}
+
+function applyCreditAudit(finishedRound) {
+  if (!CREDIT_AUDIT_ROUNDS.has(finishedRound)) return [];
+
+  const expectedCredits = expectedCreditsForRound(finishedRound);
+  const maxBonus = YEAR_RECAP_ROUNDS.has(finishedRound)
+    ? YEAR_END_CREDIT_AUDIT_MAX_BONUS
+    : CREDIT_AUDIT_MAX_BONUS;
+  const adjustments = [];
+
+  for (const player of state.players) {
+    const deficit = expectedCredits - player.resources.credits;
+    if (
+      finishedRound === BOARD_FINAL_ROUND
+      && player.resources.credits >= FINAL_CREDIT_AUDIT_FLOOR
+      && deficit > 0
+    ) {
+      player.resources.credits = clampResource("credits", player.resources.credits + deficit);
+      adjustments.push({ playerName: player.name, bonus: deficit });
+      continue;
     }
 
-    // Skip offline players
-    const nextPlayer = state.players.find((p) => p.id === state.turnOrder[nextIndex]);
-    if (nextPlayer && !nextPlayer.online) {
-      state.completedTurns.push(state.turnOrder[nextIndex]);
-      state.turnIndex = nextIndex;
-      advanceTurn();
-      return;
-    }
+    if (deficit <= CREDIT_AUDIT_GRACE_GAP) continue;
 
-    state.turnIndex = nextIndex;
-    state.phase = "rolling";
-    state.lastRoll = null;
-    state.lastChoiceResult = null;
-    state.turnStartedAt = null;
-    broadcastState();
+    const bonus = Math.min(
+      maxBonus,
+      Math.max(1, Math.ceil((deficit - CREDIT_AUDIT_GRACE_GAP) / 2)),
+    );
+    player.resources.credits = clampResource("credits", player.resources.credits + bonus);
+    adjustments.push({ playerName: player.name, bonus });
   }
+
+  return adjustments;
 }
 
 /**
@@ -1248,6 +1985,32 @@ function advanceTurn() {
 function endRound() {
   const finishedRound = state.currentRound;
   const roundInfo = getRoundInfo(finishedRound);
+
+  if (finishedRound % 6 === 0) {
+    for (const player of state.players) {
+      player.resources.credits = clampResource(
+        "credits",
+        player.resources.credits + SEMESTER_CREDIT_BONUS,
+      );
+    }
+    broadcast({
+      type: "system",
+      message: `学期末の履修整理で全員に${SEMESTER_CREDIT_BONUS}単位が入りました。`,
+    });
+  }
+
+  const creditAdjustments = applyCreditAudit(finishedRound);
+  if (creditAdjustments.length > 0) {
+    const names = creditAdjustments
+      .slice(0, 3)
+      .map((entry) => `${entry.playerName}+${entry.bonus}`)
+      .join("、");
+    const suffix = creditAdjustments.length > 3 ? ` ほか${creditAdjustments.length - 3}人` : "";
+    broadcast({
+      type: "system",
+      message: `履修確認で遅れを調整しました（${names}${suffix}単位）。`,
+    });
+  }
 
   // Check credit checkpoints
   const creditReq = CREDIT_CHECKPOINTS[finishedRound];
@@ -1275,22 +2038,36 @@ function endRound() {
   for (const player of state.players) {
     if (player.online) {
       applyPerRoundFlagEffects(player);
+      tickRecoveryCooldowns(player);
     }
   }
 
-  // Start next round
+  if (YEAR_RECAP_ROUNDS.has(finishedRound)) {
+    state.phase = "year_recap";
+    state.yearRecap = buildYearRecap(finishedRound);
+    state.activeTurnPlayerIds = [];
+    clearBoardTurnEventState();
+    state.turnStartedAt = null;
+    broadcastState();
+    return;
+  }
+
+  startNextBoardRound(finishedRound);
+}
+
+function startNextBoardRound(finishedRound) {
   state.currentRound = finishedRound + 1;
   state.completedTurns = [];
   state.thresholdFiredThisRound = new Set();
   state.turnIndex = 0;
   state.lastRoll = null;
   state.lastChoiceResult = null;
-  state.currentEvent = null;
-  state.availableChoiceIds = [];
+  state.yearRecap = null;
+  state.lastTurnGroupResults = [];
+  clearBoardTurnEventState({ clearResults: true });
   state.turnStartedAt = null;
 
-  state.phase = "rolling";
-  broadcastState();
+  prepareNextBoardTurnGroup();
 }
 
 /**
@@ -1377,13 +2154,14 @@ wss.on("connection", (socket) => {
         });
       }
       if (role === "controller" && state.mode !== "life_map" && state.phase === "choosing" && state.currentEvent) {
-        const currentPlayer = getCurrentPlayer();
-        if (currentPlayer?.id === clientId) {
+        const event = state.activeTurnEvents[clientId];
+        const availableChoiceIds = state.availableChoiceIdsByPlayer[clientId];
+        if (event && availableChoiceIds) {
           sendTo(socket, {
             type: "show_event",
-            event: state.currentEvent,
-            availableChoiceIds: state.availableChoiceIds,
-            playerId: currentPlayer.id,
+            event,
+            availableChoiceIds,
+            playerId: clientId,
           });
         }
       }
@@ -1411,6 +2189,13 @@ wss.on("connection", (socket) => {
       state.currentEvent = null;
       state.availableChoiceIds = [];
       state.lastChoiceResult = null;
+      state.activeTurnPlayerIds = [];
+      state.activeTurnEvents = {};
+      state.availableChoiceIdsByPlayer = {};
+      state.pendingTurnChoices = {};
+      state.pendingRecoveryOriginalEvents = {};
+      state.lastTurnGroupResults = [];
+      state.yearRecap = null;
       state.currentSeasonIndex = 0;
       state.lifePlayers = [];
       state.lifeMapSquares = [];
@@ -1429,9 +2214,14 @@ wss.on("connection", (socket) => {
         player.badLuckPoints = 0;
         player.flagHistory = [];
         player.choiceHistory = [];
+        player.pathScores = defaultPathScores();
+        player.yearAnchors = [];
+        player.milestones = [];
+        player.recoveryCooldowns = {};
+        player.recoveryUsesByYear = {};
       }
 
-      broadcastState();
+      prepareNextBoardTurnGroup();
       sendHostPlayerManagement();
       broadcastNavigate("/controller-play.html", ["controller"]);
       return;
@@ -1452,8 +2242,20 @@ wss.on("connection", (socket) => {
       state.currentEvent = null;
       state.availableChoiceIds = [];
       state.lastChoiceResult = null;
+      state.activeTurnPlayerIds = [];
+      state.activeTurnEvents = {};
+      state.availableChoiceIdsByPlayer = {};
+      state.pendingTurnChoices = {};
+      state.pendingRecoveryOriginalEvents = {};
+      state.lastTurnGroupResults = [];
+      state.yearRecap = null;
       state.currentSeasonIndex = 0;
       state.pendingLifeChoices = {};
+      state.pendingLifeResults = {};
+      // Master feature: choice philosophy ("equal" | "realistic")
+      // NOTE: currently stored only; actual gameplay differentiation
+      // is tracked in a follow-up issue (interacts with codex's effectBudget).
+      state.choicePhilosophy = payload.philosophy === "realistic" ? "realistic" : "equal";
       state.fallbackMode = false;
       for (const player of state.players) {
         player.resources = defaultResources();
@@ -1464,6 +2266,11 @@ wss.on("connection", (socket) => {
         player.badLuckPoints = 0;
         player.flagHistory = [];
         player.choiceHistory = [];
+        player.pathScores = defaultPathScores();
+        player.yearAnchors = [];
+        player.milestones = [];
+        player.recoveryCooldowns = {};
+        player.recoveryUsesByYear = {};
       }
       state.choicePhilosophy = payload.philosophy ?? "equal";
       state.lifePlayers = state.players.map((player) => createTimelinePlayer(player.id, player.name));
@@ -1499,6 +2306,19 @@ wss.on("connection", (socket) => {
       return;
     }
 
+    // ─── end_game ──────────────────────────────────────────────
+    if (payload.type === "end_game") {
+      if (client.role !== "host" || client.id !== hostId) return;
+      if (state.phase === "lobby" || state.phase === "result") return;
+
+      if (state.mode === "life_map") {
+        endTimelineGame();
+      } else {
+        endGame();
+      }
+      return;
+    }
+
     // ─── remove_player ──────────────────────────────────────────
     if (payload.type === "remove_player") {
       if (client.role !== "host" || client.id !== hostId) return;
@@ -1524,15 +2344,23 @@ wss.on("connection", (socket) => {
       return;
     }
 
+    if (payload.type === "set_turn_mode") {
+      if (client.role !== "host" || client.id !== hostId) return;
+      if (!TURN_MODES.has(payload.mode)) return;
+      state.turnMode = payload.mode;
+      broadcastState();
+      return;
+    }
+
     if (payload.type === "host_player_roll") {
       if (client.role !== "host" || client.id !== hostId) return;
       if (state.mode === "life_map") return;
       if (state.phase !== "rolling") return;
       if (typeof payload.playerId !== "string") return;
 
-      const currentPlayer = getCurrentPlayer();
-      if (!currentPlayer || currentPlayer.id !== payload.playerId) return;
-      rollForPlayer(currentPlayer);
+      const targetPlayer = getPlayerById(payload.playerId);
+      if (!targetPlayer || !isPlayerActiveInBoardGroup(targetPlayer.id)) return;
+      rollForPlayer(targetPlayer);
       return;
     }
 
@@ -1547,7 +2375,27 @@ wss.on("connection", (socket) => {
       return;
     }
 
-    // ─── host_force_advance_choices ────────────────────────────
+    if (payload.type === "display_player_choice") {
+      if (client.role !== "display") return;
+      if (state.mode === "life_map") return;
+      if (state.phase !== "choosing") return;
+      if (typeof payload.playerId !== "string" || typeof payload.choiceId !== "string") return;
+
+      const targetPlayer = getPlayerById(payload.playerId);
+      if (!targetPlayer) return;
+      submitChoiceForPlayer(targetPlayer, payload.choiceId, "display");
+      return;
+    }
+
+    if (payload.type === "continue_year_recap") {
+      if (client.role !== "host" || client.id !== hostId) return;
+      if (state.mode === "life_map") return;
+      if (state.phase !== "year_recap") return;
+      presentYearAnchorEvent(state.currentRound);
+      return;
+    }
+
+    // ─── host_force_advance_choices (master feature: simultaneous mode) ──
     if (payload.type === "host_force_advance_choices") {
       if (client.role !== "host" || client.id !== hostId) return;
       if (state.mode !== "life_map" || state.phase !== "choosing") return;
@@ -1566,7 +2414,7 @@ wss.on("connection", (socket) => {
       return;
     }
 
-    // ─── host_advance_after_reveal ─────────────────────────────
+    // ─── host_advance_after_reveal (master feature: simultaneous mode) ───
     if (payload.type === "host_advance_after_reveal") {
       if (client.role !== "host" || client.id !== hostId) return;
       if (state.mode !== "life_map" || state.phase !== "revealed") return;
@@ -1580,9 +2428,8 @@ wss.on("connection", (socket) => {
       if (state.phase !== "rolling") return;
       if (state.turnOrder.length === 0) return;
 
-      const currentPlayer = getCurrentPlayer();
-      if (!currentPlayer || currentPlayer.id !== client.id) return;
-      if (!currentPlayer.online) return;
+      const currentPlayer = getPlayerById(client.id);
+      if (!currentPlayer || !currentPlayer.online || !isPlayerActiveInBoardGroup(currentPlayer.id)) return;
 
       rollForPlayer(currentPlayer);
       return;
@@ -1593,15 +2440,18 @@ wss.on("connection", (socket) => {
       if (client.role !== "controller") return;
       if (state.phase !== "choosing") return;
 
-      const currentPlayer = getCurrentPlayer();
+      const currentPlayer = getPlayerById(client.id);
       const timelinePlayer = state.mode === "life_map"
         ? state.players.find((p) => p.id === client.id)
         : null;
-      if (state.mode !== "life_map" && (!currentPlayer || currentPlayer.id !== client.id)) return;
+      if (state.mode !== "life_map" && (!currentPlayer || !isPlayerActiveInBoardGroup(currentPlayer.id))) return;
       if (state.mode === "life_map" && !timelinePlayer) return;
 
       const choiceId = payload.choiceId;
-      if (!state.availableChoiceIds.includes(choiceId)) return;
+      const availableIds = state.mode === "life_map"
+        ? state.availableChoiceIds
+        : state.availableChoiceIdsByPlayer[client.id] ?? [];
+      if (!availableIds.includes(choiceId)) return;
 
       submitChoiceForPlayer(state.mode === "life_map" ? timelinePlayer : currentPlayer, choiceId);
       return;
@@ -1621,6 +2471,15 @@ wss.on("connection", (socket) => {
 
     if (client.role === "controller") {
       markOffline(client.id);
+      if (state.mode !== "life_map" && state.phase === "choosing" && state.activeTurnPlayerIds.includes(client.id)) {
+        tryCompleteBoardTurnGroup();
+      }
+      if (state.mode !== "life_map" && state.phase === "rolling" && state.activeTurnPlayerIds.includes(client.id)) {
+        state.activeTurnPlayerIds = state.activeTurnPlayerIds.filter((id) => id !== client.id);
+        if (state.activeTurnPlayerIds.length === 0) {
+          prepareNextBoardTurnGroup();
+        }
+      }
       sendHostPlayerManagement();
     }
 
@@ -1644,28 +2503,35 @@ wss.on("connection", (socket) => {
 //  Admin Endpoints (localhost only)
 // ═══════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════
+//  Static File Serving
+// ═══════════════════════════════════════════════════════════════════
+
 app.use(express.json());
 
 // start-game.mjs がCloudflare TunnelのURLをここにPOSTする
 app.post("/admin/tunnel-url", (req, res) => {
-  const ip = req.socket.remoteAddress ?? "";
-  const isLocal = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
-  if (!isLocal) { res.status(403).json({ error: "localhost only" }); return; }
-
-  const { url } = req.body ?? {};
-  if (!url || typeof url !== "string" || !url.startsWith("https://")) {
-    res.status(400).json({ error: "invalid url" }); return;
+  const remoteAddress = req.socket.remoteAddress ?? "";
+  const isLocalRequest =
+    remoteAddress === "127.0.0.1" ||
+    remoteAddress === "::1" ||
+    remoteAddress === "::ffff:127.0.0.1";
+  if (!isLocalRequest) {
+    res.status(403).json({ error: "localhost only" });
+    return;
   }
 
-  publicTunnelUrl = url;
-  broadcastHostUrls();
-  console.log(`\n🌐 Tunnel URL set: ${url}\n`);
-  res.json({ ok: true, url });
-});
+  const url = req.body?.url;
+  if (typeof url !== "string" || !url.startsWith("https://")) {
+    res.status(400).json({ error: "invalid url" });
+    return;
+  }
 
-// ═══════════════════════════════════════════════════════════════════
-//  Static File Serving
-// ═══════════════════════════════════════════════════════════════════
+  publicTunnelUrl = url.replace(/\/+$/, "");
+  broadcastHostUrls();
+  console.log(`\n🌐 Tunnel URL set: ${publicTunnelUrl}\n`);
+  res.json({ ok: true, url: publicTunnelUrl });
+});
 
 if (fs.existsSync(path.join(process.cwd(), STATIC_DIR))) {
   app.use(express.static(STATIC_DIR));

@@ -58,8 +58,42 @@ export type Faculty =
   | "medical"
   | "arts_sports";
 export type CareerPath = "standard" | "grad_school" | "entrepreneur";
+export type HousingType = "family" | "alone" | "dorm_share";
+export type IntentTag =
+  | "study"
+  | "research"
+  | "social"
+  | "community"
+  | "romance"
+  | "career"
+  | "work"
+  | "creative"
+  | "adventure"
+  | "rest"
+  | "risk";
+
+export type PathScores = Record<IntentTag, number>;
+
+export interface YearAnchor {
+  year: 1 | 2 | 3;
+  choiceId: string;
+  choiceLabel: string;
+  intentTags: IntentTag[];
+  storyTags?: string[];
+}
+
+export interface PlayerMilestone {
+  round: number;
+  eventId: string;
+  eventTitle: string;
+  choiceId: string;
+  choiceLabel: string;
+  intentTags: IntentTag[];
+  storyTags?: string[];
+}
 
 export interface SpecialFlags {
+  housing: HousingType;
   living_alone: boolean;
   has_partner: boolean;
   has_license: boolean;
@@ -83,6 +117,7 @@ export type FlagEffects = Partial<SpecialFlags>;
 export interface ChoiceCondition {
   minStats?: Partial<ResourceStats & ExperienceStats>;
   requiredFlags?: Partial<SpecialFlags>;
+  excludedFlags?: Partial<SpecialFlags>;
   requiredAnyFlags?: Partial<SpecialFlags>[];
   minRound?: number;
   faculty?: Faculty;
@@ -92,6 +127,8 @@ export interface DynamicRandomChance {
   formula: "romance_success";
   onSuccess?: StatEffects;
   onFailure?: StatEffects;
+  onSuccessFlags?: FlagEffects;
+  onFailureFlags?: FlagEffects;
 }
 
 // ─── Event Types ──────────────────────────────────────────────────
@@ -110,6 +147,7 @@ export interface EventChoice {
     risk: "low" | "medium" | "high" | "unknown";
   };
   storyTags?: string[];
+  intentTags?: IntentTag[];
   /** Probability of a random bonus/penalty (0-1). Used for gambling-style choices. */
   randomChance?: number;
   randomBonusEffects?: StatEffects;
@@ -120,6 +158,11 @@ export interface EventChoice {
   branchRoute?: string;
   weight?: number;
   polarity?: "positive" | "negative" | "mixed";
+  effectBudgetTarget?: 3 | 5;
+  preserveEffects?: boolean;
+  skipRecovery?: boolean;
+  resultWeight?: number;
+  yearAnchor?: boolean;
 }
 
 export interface ConditionalVariant {
@@ -141,8 +184,11 @@ export interface GameEvent {
   vacationType?: "spring" | "summer";
   weight?: number;
   polarity?: "positive" | "negative" | "mixed";
+  effectBudgetTarget?: 3 | 5;
+  intentTags?: IntentTag[];
   condition?: ChoiceCondition;
   choices: EventChoice[];
+  /** Whether all players choose simultaneously (master feature) or sequentially */
   choiceMode?: "simultaneous" | "sequential";
   /** Alternative choice sets based on player flags/stats */
   conditionalVariants?: ConditionalVariant[];
@@ -188,6 +234,11 @@ export interface Player {
   /** Track which flags were collected for the ending recap */
   flagHistory: string[];
   choiceHistory: ChoiceHistoryEntry[];
+  pathScores: PathScores;
+  yearAnchors: YearAnchor[];
+  milestones: PlayerMilestone[];
+  recoveryCooldowns: Partial<Record<ResourceKey | ExperienceKey, number>>;
+  recoveryUsesByYear: Record<string, number>;
 }
 
 export interface ChoiceHistoryEntry {
@@ -198,7 +249,9 @@ export interface ChoiceHistoryEntry {
   choiceLabel: string;
   effects: StatEffects;
   flagEffects?: FlagEffects;
-  submittedBy?: "controller" | "host";
+  intentTags: IntentTag[];
+  storyTags?: string[];
+  submittedBy?: "controller" | "host" | "display";
 }
 
 // ─── Season / Round ───────────────────────────────────────────────
@@ -241,8 +294,9 @@ export function getRoundInfo(round: number): RoundInfo {
 
 // ─── Game State ───────────────────────────────────────────────────
 export type GameMode = "board" | "life_map";
+export type TurnMode = "pair" | "all";
 
-export type GamePhase = "lobby" | "rolling" | "choosing" | "animating" | "revealed" | "result";
+export type GamePhase = "lobby" | "rolling" | "choosing" | "animating" | "year_recap" | "revealed" | "result";
 
 export type LifeTraitKey =
   | "academic"
@@ -309,6 +363,25 @@ export interface LifeMapRouteSquare {
 
 export type LifeMapSquare = LifeMapSeasonHubSquare | LifeMapRouteSquare;
 
+export interface YearRecapPlayer {
+  playerId: string;
+  playerName: string;
+  credits: number;
+  creditStatus: string;
+  graduationOutlook: string;
+  strengths: string[];
+  warningSigns: string[];
+  resources: ResourceStats;
+  experience: ExperienceStats;
+}
+
+export interface YearRecap {
+  year: 1 | 2 | 3;
+  round: number;
+  title: string;
+  players: YearRecapPlayer[];
+}
+
 export interface LastRoll {
   playerId: string;
   playerName: string;
@@ -331,7 +404,15 @@ export interface GameState {
   availableChoiceIds: string[];
   /** Last choice result for animation display */
   lastChoiceResult: ChoiceResult | null;
+  activeTurnPlayerIds?: string[];
+  activeTurnEvents?: Record<string, GameEvent>;
+  availableChoiceIdsByPlayer?: Record<string, string[]>;
+  pendingTurnChoices?: Record<string, string>;
+  pendingRecoveryOriginalEvents?: Record<string, { event: GameEvent; availableIds: string[] }>;
+  lastTurnGroupResults?: ChoiceResult[];
+  yearRecap?: YearRecap | null;
   fallbackMode?: boolean;
+  turnMode?: TurnMode;
   startedAt?: number | null;
   turnStartedAt?: number | null;
   roundDurations?: RoundDuration[];
@@ -341,7 +422,11 @@ export interface GameState {
   lifePlayerPositions?: Record<string, string>;
   lifePlayerRoutes?: Record<string, string[]>;
   pendingLifeChoices?: Record<string, string>;
+  /** Simultaneous mode: pending results held until everyone is done */
+  pendingLifeResults?: Record<string, ChoiceResult>;
+  /** Current choice mode for the active event (simultaneous vs sequential) */
   currentChoiceMode?: "simultaneous" | "sequential";
+  /** Choice effect philosophy: equal (normalize totals) vs realistic (raw effects) */
   choicePhilosophy?: "equal" | "realistic";
 }
 
@@ -353,8 +438,10 @@ export interface ChoiceResult {
   effects: StatEffects;
   flagEffects?: FlagEffects;
   tone?: string;
+  intentTags?: IntentTag[];
   storyTags?: string[];
   randomOutcome?: "success" | "failure" | "cheat_exposed" | "cheat_hidden";
+  submittedBy?: "controller" | "host" | "display";
 }
 
 export interface RoundDuration {
@@ -410,6 +497,9 @@ export interface PlayerResult {
   experience: ExperienceStats;
   flags: SpecialFlags;
   flagHistory: string[];
+  pathScores?: PathScores;
+  yearAnchors?: YearAnchor[];
+  milestones?: PlayerMilestone[];
   storyTags?: string[];
   choiceHistory?: ChoiceHistoryEntry[];
   reflection?: ReflectionQuestions;
@@ -439,6 +529,7 @@ export type ServerMessage =
       result: ChoiceResult;
     }
   | {
+      /** Simultaneous mode: all players' choices revealed together (master feature) */
       type: "all_choices_revealed";
       results: ChoiceResult[];
     }
@@ -450,12 +541,18 @@ export type ClientMessage =
   | { type: "join"; name: string; role: Role; clientId?: string; passkey?: string; faculty?: Faculty }
   | { type: "start_game" }
   | { type: "start_life_map_game"; philosophy?: "equal" | "realistic" }
+  | { type: "end_game" }
   | { type: "reset_game" }
   | { type: "remove_player"; playerId: string }
   | { type: "set_fallback_mode"; enabled: boolean }
+  | { type: "set_turn_mode"; mode: TurnMode }
   | { type: "host_player_roll"; playerId: string }
   | { type: "host_player_choice"; playerId: string; choiceId: string }
+  | { type: "display_player_choice"; playerId: string; choiceId: string }
+  | { type: "continue_year_recap" }
+  /** Simultaneous mode: skip not-yet-chosen players (master feature) */
   | { type: "host_force_advance_choices" }
+  /** Simultaneous mode: after reveal, move to next event (master feature) */
   | { type: "host_advance_after_reveal" }
   | { type: "player_roll" }
   | { type: "player_choice"; choiceId: string }
@@ -476,8 +573,25 @@ export function defaultExperience(): ExperienceStats {
   };
 }
 
+export function defaultPathScores(): PathScores {
+  return {
+    study: 0,
+    research: 0,
+    social: 0,
+    community: 0,
+    romance: 0,
+    career: 0,
+    work: 0,
+    creative: 0,
+    adventure: 0,
+    rest: 0,
+    risk: 0,
+  };
+}
+
 export function defaultFlags(): SpecialFlags {
   return {
+    housing: "family",
     living_alone: false,
     has_partner: false,
     has_license: false,
@@ -506,7 +620,18 @@ export function defaultGameState(): GameState {
     currentEvent: null,
     availableChoiceIds: [],
     lastChoiceResult: null,
+    activeTurnPlayerIds: [],
+    activeTurnEvents: {},
+    availableChoiceIdsByPlayer: {},
+    pendingTurnChoices: {},
+    pendingRecoveryOriginalEvents: {},
+    lastTurnGroupResults: [],
+    yearRecap: null,
     fallbackMode: false,
+    turnMode: "pair",
+    currentChoiceMode: "sequential",
+    choicePhilosophy: "equal",
+    pendingLifeResults: {},
     startedAt: null,
     turnStartedAt: null,
     roundDurations: [],
@@ -588,6 +713,23 @@ export function wsUrlFromInput(input: string) {
 }
 
 export function choosePrimaryHostUrl(urls: string[]) {
+  const publicUrl = urls.find((url) => {
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname;
+      const isPrivateLan =
+        host.startsWith("192.168.") ||
+        host.startsWith("10.") ||
+        host.startsWith("172.") ||
+        host === "localhost" ||
+        host === "127.0.0.1";
+      return parsed.protocol === "https:" && !isPrivateLan;
+    } catch {
+      return false;
+    }
+  });
+  if (publicUrl) return publicUrl;
+
   const lan = urls.find((url) => {
     try {
       const host = new URL(url).hostname;
