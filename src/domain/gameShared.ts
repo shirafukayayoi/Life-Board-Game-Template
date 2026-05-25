@@ -188,6 +188,8 @@ export interface GameEvent {
   intentTags?: IntentTag[];
   condition?: ChoiceCondition;
   choices: EventChoice[];
+  /** Whether all players choose simultaneously (master feature) or sequentially */
+  choiceMode?: "simultaneous" | "sequential";
   /** Alternative choice sets based on player flags/stats */
   conditionalVariants?: ConditionalVariant[];
 }
@@ -294,7 +296,7 @@ export function getRoundInfo(round: number): RoundInfo {
 export type GameMode = "board" | "life_map";
 export type TurnMode = "pair" | "all";
 
-export type GamePhase = "lobby" | "rolling" | "choosing" | "animating" | "year_recap" | "result";
+export type GamePhase = "lobby" | "rolling" | "choosing" | "animating" | "year_recap" | "revealed" | "result";
 
 export type LifeTraitKey =
   | "academic"
@@ -420,6 +422,12 @@ export interface GameState {
   lifePlayerPositions?: Record<string, string>;
   lifePlayerRoutes?: Record<string, string[]>;
   pendingLifeChoices?: Record<string, string>;
+  /** Simultaneous mode: pending results held until everyone is done */
+  pendingLifeResults?: Record<string, ChoiceResult>;
+  /** Current choice mode for the active event (simultaneous vs sequential) */
+  currentChoiceMode?: "simultaneous" | "sequential";
+  /** Choice effect philosophy: equal (normalize totals) vs realistic (raw effects) */
+  choicePhilosophy?: "equal" | "realistic";
 }
 
 export interface ChoiceResult {
@@ -520,6 +528,11 @@ export type ServerMessage =
       type: "choice_result";
       result: ChoiceResult;
     }
+  | {
+      /** Simultaneous mode: all players' choices revealed together (master feature) */
+      type: "all_choices_revealed";
+      results: ChoiceResult[];
+    }
   | { type: "round_end"; round: number; roundInfo: RoundInfo }
   | { type: "player_removed"; playerId: string; playerName: string }
   | { type: "game_result"; results: PlayerResult[] };
@@ -527,7 +540,7 @@ export type ServerMessage =
 export type ClientMessage =
   | { type: "join"; name: string; role: Role; clientId?: string; passkey?: string; faculty?: Faculty }
   | { type: "start_game" }
-  | { type: "start_life_map_game" }
+  | { type: "start_life_map_game"; philosophy?: "equal" | "realistic" }
   | { type: "end_game" }
   | { type: "reset_game" }
   | { type: "remove_player"; playerId: string }
@@ -537,6 +550,10 @@ export type ClientMessage =
   | { type: "host_player_choice"; playerId: string; choiceId: string }
   | { type: "display_player_choice"; playerId: string; choiceId: string }
   | { type: "continue_year_recap" }
+  /** Simultaneous mode: skip not-yet-chosen players (master feature) */
+  | { type: "host_force_advance_choices" }
+  /** Simultaneous mode: after reveal, move to next event (master feature) */
+  | { type: "host_advance_after_reveal" }
   | { type: "player_roll" }
   | { type: "player_choice"; choiceId: string }
   | { type: "request_state" };
@@ -612,6 +629,9 @@ export function defaultGameState(): GameState {
     yearRecap: null,
     fallbackMode: false,
     turnMode: "pair",
+    currentChoiceMode: "sequential",
+    choicePhilosophy: "equal",
+    pendingLifeResults: {},
     startedAt: null,
     turnStartedAt: null,
     roundDurations: [],
