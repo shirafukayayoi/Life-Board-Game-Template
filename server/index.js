@@ -39,6 +39,9 @@ const PORT = Number(process.env.PORT ?? 4173);
 const STATIC_DIR = process.env.STATIC_DIR ?? "dist";
 let publicTunnelUrl = process.env.PUBLIC_URL ?? null;
 
+// Cloudflare Tunnel などで注入される公開URL（start-game.mjs が POST /admin/tunnel-url で設定）
+let publicTunnelUrl = process.env.PUBLIC_URL ?? null;
+
 const RESOURCE_KEYS = ["time", "money", "credits", "health"];
 const EXPERIENCE_KEYS = ["intellect", "connections", "work_tolerance", "action_power", "romance_exp"];
 const STAT_LABELS = {
@@ -243,6 +246,9 @@ function defaultGameState() {
     lifePlayerPositions: {},
     lifePlayerRoutes: {},
     pendingLifeChoices: {},
+    pendingLifeResults: {},
+    currentChoiceMode: "sequential",
+    choicePhilosophy: "equal",
   };
 }
 
@@ -283,6 +289,8 @@ function getHostUrls() {
       }
     });
   });
+  // トンネルURLが設定されている場合は先頭に追加（ホストUIで優先表示される）
+  if (publicTunnelUrl) urls.add(publicTunnelUrl);
   return Array.from(urls);
 }
 
@@ -1159,6 +1167,7 @@ function processTimelineChoice(player, choiceId, submittedBy = "controller") {
     storyTags: choice.storyTags,
   };
   state.lastChoiceResult = result;
+  state.pendingLifeResults[player.id] = result;
   recordChoiceHistory(player, event, choice, visibleEffects, choice.flagEffects ?? choice.setFlags, submittedBy);
 
   // Master feature: simultaneous mode holds results until everyone is done.
@@ -1170,11 +1179,19 @@ function processTimelineChoice(player, choiceId, submittedBy = "controller") {
     broadcast({ type: "choice_result", result });
   }
 
-  if (tryAdvanceTimelineEvent(event)) {
-    return;
+  if (state.currentChoiceMode === "simultaneous") {
+    // 一斉モード: 全員揃うまで結果を隠す
+    if (tryAdvanceTimelineEvent(event)) {
+      return;
+    }
+    broadcastState();
+  } else {
+    broadcast({ type: "choice_result", result });
+    if (tryAdvanceTimelineEvent(event)) {
+      return;
+    }
+    broadcastState();
   }
-
-  broadcastState();
 }
 
 function tryAdvanceTimelineEvent(event = getCurrentTimelineEvent()) {
@@ -1205,7 +1222,7 @@ function tryAdvanceTimelineEvent(event = getCurrentTimelineEvent()) {
     const selectedId = state.pendingLifeChoices[lifePlayer.id];
     const selectedChoice = event.choices.find((c) => c.id === selectedId);
     if (!selectedChoice) return lifePlayer;
-    return applyTimelineChoice(lifePlayer, event, selectedChoice);
+    return applyTimelineChoice(lifePlayer, event, selectedChoice, state.choicePhilosophy);
   });
 
   state.currentSeasonIndex += 1;
@@ -2256,6 +2273,7 @@ wss.on("connection", (socket) => {
         player.recoveryCooldowns = {};
         player.recoveryUsesByYear = {};
       }
+      state.choicePhilosophy = payload.philosophy ?? "equal";
       state.lifePlayers = state.players.map((player) => createTimelinePlayer(player.id, player.name));
       state.lifeMapSquares = PUBLIC_LIFE_MAP_SQUARES;
       state.lifePlayerPositions = Object.fromEntries(
@@ -2480,6 +2498,29 @@ wss.on("connection", (socket) => {
 
     broadcastState();
   });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  Admin Endpoints (localhost only)
+// ═══════════════════════════════════════════════════════════════════
+
+app.use(express.json());
+
+// start-game.mjs がCloudflare TunnelのURLをここにPOSTする
+app.post("/admin/tunnel-url", (req, res) => {
+  const ip = req.socket.remoteAddress ?? "";
+  const isLocal = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+  if (!isLocal) { res.status(403).json({ error: "localhost only" }); return; }
+
+  const { url } = req.body ?? {};
+  if (!url || typeof url !== "string" || !url.startsWith("https://")) {
+    res.status(400).json({ error: "invalid url" }); return;
+  }
+
+  publicTunnelUrl = url;
+  broadcastHostUrls();
+  console.log(`\n🌐 Tunnel URL set: ${url}\n`);
+  res.json({ ok: true, url });
 });
 
 // ═══════════════════════════════════════════════════════════════════

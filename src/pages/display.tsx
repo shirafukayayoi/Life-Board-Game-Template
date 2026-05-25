@@ -879,6 +879,7 @@ export function DisplayPage() {
   const [eventAvailableIds, setEventAvailableIds] = useState<string[]>([]);
   const [choiceResult, setChoiceResult] = useState<ChoiceResult | null>(null);
   const [eventFading, setEventFading] = useState(false);
+  const [allChoicesRevealed, setAllChoicesRevealed] = useState<ChoiceResult[] | null>(null);
 
   // Round-end banner
   const [roundEndInfo, setRoundEndInfo] = useState<RoundInfo | null>(null);
@@ -1081,6 +1082,7 @@ export function DisplayPage() {
           setEventPlayerId(null);
           setEventAvailableIds(message.availableChoiceIds);
           setChoiceResult(null);
+          setAllChoicesRevealed(null);
           setEventFading(false);
           scheduleEventOverlayDismiss();
           break;
@@ -1093,6 +1095,12 @@ export function DisplayPage() {
               fadeOutEvent();
             }, 3000);
           }
+          break;
+
+        case "all_choices_revealed":
+          playSfx("choice_result");
+          setAllChoicesRevealed(message.results);
+          setShowEvent(null);
           break;
 
         case "round_end":
@@ -1629,6 +1637,36 @@ export function DisplayPage() {
             {!isGroupResultOverlay && lastTurnGroupResults.length > 1 && (
               <TurnGroupResultPanel results={lastTurnGroupResults} />
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── All Choices Revealed Overlay (simultaneous mode) ─────── */}
+      {allChoicesRevealed && (
+        <div className="event-overlay">
+          <div className="event-card">
+            <div className="event-card__category">一斉開示</div>
+            <div className="event-card__title">全員の選択が明らかに！</div>
+            <div className="event-card__choices">
+              {allChoicesRevealed.map((result) => (
+                <div key={result.playerId} className="event-choice event-choice--chosen" style={{ justifyContent: "space-between" }}>
+                  <div className="event-choice__text">
+                    <div className="event-choice__label" style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                      {result.playerName}
+                    </div>
+                    <div style={{ fontWeight: 600 }}>→ {result.choiceLabel}</div>
+                  </div>
+                  {result.tone && (
+                    <span className="event-effect-badge event-effect-badge--positive" style={{ flexShrink: 0 }}>
+                      {result.tone}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div style={{ textAlign: "center", marginTop: 12, fontSize: 13, color: "var(--text-secondary)" }}>
+              ホストが次のイベントへ進めます
+            </div>
           </div>
         </div>
       )}

@@ -107,7 +107,8 @@
           "越境"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year1-summer",
@@ -218,7 +219,8 @@
           "自由人"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year1-autumn",
@@ -327,7 +329,8 @@
           "挑戦"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year1-winter",
@@ -435,7 +438,8 @@
           "立て直し"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year2-spring",
@@ -545,7 +549,8 @@
           "自由人"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year2-summer",
@@ -655,7 +660,8 @@
           "制作"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year2-autumn",
@@ -767,7 +773,8 @@
           "コンテスト"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year2-winter",
@@ -879,7 +886,8 @@
           "生活再設計"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year3-spring",
@@ -989,7 +997,8 @@
           "自分探し"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year3-summer",
@@ -1105,7 +1114,8 @@
           "予定少なめ"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year3-autumn",
@@ -1215,7 +1225,8 @@
           "挑戦"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year3-winter",
@@ -1328,7 +1339,8 @@
           "連絡少なめ"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year4-spring",
@@ -1441,7 +1453,8 @@
           "納得"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year4-summer",
@@ -1554,7 +1567,8 @@
           "休む時間"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year4-autumn",
@@ -1663,7 +1677,8 @@
           "自分探し"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   },
   {
     "id": "year4-winter",
@@ -1776,6 +1791,7 @@
           "キャンパス残留"
         ]
       }
-    ]
+    ],
+    "choiceMode": "simultaneous"
   }
 ]

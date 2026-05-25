@@ -287,6 +287,8 @@ function App() {
     sendMessage({ type: "start_game" });
   };
 
+  const [choicePhilosophy, setChoicePhilosophy] = useState<"equal" | "realistic">("equal");
+
   const startLifeMapGame = () => {
     if (!clientId) return;
     if (state.players.length < 1) {

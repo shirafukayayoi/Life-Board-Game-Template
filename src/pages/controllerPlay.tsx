@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { generateResultCard } from "../utils/generateCard";
 import { createRoot } from "react-dom/client";
 import { generateResultCard } from "../utils/generateCard";
 import {
@@ -1002,6 +1003,13 @@ export function ControllerPlayPage() {
           break;
         }
 
+        case "all_choices_revealed": {
+          setRevealedResults(msg.results);
+          setCurrentEvent(null);
+          setConfirmChoice(null);
+          break;
+        }
+
         case "game_result":
           setGameResults(msg.results);
           break;
@@ -1118,6 +1126,7 @@ export function ControllerPlayPage() {
     activeChoiceResult,
     showStatChanges,
     gameResults,
+    revealedResults,
     myDiceResult,
     myBoardChoiceSubmitted,
     myBoardEvent,
