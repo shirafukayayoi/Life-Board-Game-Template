@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "events:check": "node scripts/validate-events.mjs",
+    "simulate": "node scripts/simulate.mjs",
     "sim:random": "node scripts/random-playthrough.mjs",
     "game": "node scripts/start-game.mjs",
     "game:tunnel": "node scripts/start-game.mjs --tunnel",
