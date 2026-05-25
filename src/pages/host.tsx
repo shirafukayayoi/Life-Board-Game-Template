@@ -105,6 +105,16 @@ function App() {
     [hostUrls],
   );
 
+  // Cloudflare Tunnel mode detection (master feature)
+  const tunnelUrl = useMemo(
+    () => hostUrls.find((u) => u.startsWith("https://")),
+    [hostUrls],
+  );
+  const isTunnelMode = Boolean(tunnelUrl);
+
+  // Game philosophy (master feature): equal vs realistic
+  const [choicePhilosophy, setChoicePhilosophy] = useState<"equal" | "realistic">("equal");
+
   const controllerEntryUrl = useMemo(() => {
     if (!primaryHostUrl) return "";
     return `${primaryHostUrl}/controller.html?host=${encodeURIComponent(primaryHostUrl)}`;
@@ -283,7 +293,8 @@ function App() {
       setStatus("参加者が必要です");
       return;
     }
-    sendMessage({ type: "start_life_map_game" });
+    // Pass philosophy to server (master feature)
+    sendMessage({ type: "start_life_map_game", philosophy: choicePhilosophy });
   };
 
   const resetGame = () => {
@@ -324,6 +335,15 @@ function App() {
 
   const continueYearRecap = () => {
     sendMessage({ type: "continue_year_recap" });
+  };
+
+  // Simultaneous mode controls (master feature)
+  const forceAdvanceChoices = () => {
+    sendMessage({ type: "host_force_advance_choices" });
+  };
+
+  const advanceAfterReveal = () => {
+    sendMessage({ type: "host_advance_after_reveal" });
   };
 
   const getEventForFallbackPlayer = (playerId: string) => {
@@ -425,6 +445,57 @@ function App() {
               ホストとして開始
             </button>
           </div>
+        </section>
+      )}
+
+      {/* ── Connection Guide (Cloudflare Tunnel mode / Local WiFi mode) ── */}
+      {clientId && (
+        <section className={`panel connection-guide ${isTunnelMode ? "connection-guide--tunnel" : "connection-guide--local"}`}>
+          <div className="connection-guide-header">
+            <span className="connection-guide-badge">
+              {isTunnelMode ? "🌐 Cloudflare Tunnelモード" : "📡 ローカルWiFiモード"}
+            </span>
+            <span className="connection-guide-port">ポート {window.location.port || "80"}</span>
+          </div>
+
+          {isTunnelMode ? (
+            <div className="connection-guide-body">
+              <p className="connection-guide-desc">
+                参加者はどのネットワーク・どの場所からでも接続できます。
+                URLまたはQRコードを共有してください。
+              </p>
+              <div className="connection-guide-url">
+                <span className="connection-guide-url-label">参加者向けURL</span>
+                <code>{tunnelUrl}</code>
+                <button
+                  className="connection-guide-copy"
+                  onClick={() => navigator.clipboard.writeText(controllerEntryUrl)}
+                >
+                  コピー
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="connection-guide-body">
+              <p className="connection-guide-desc">
+                参加者と<strong>同じWiFi</strong>に繋がっている必要があります。
+                会場のAPアイソレーション設定にご注意ください。
+              </p>
+              <details className="connection-guide-tunnel-howto">
+                <summary>別ネットワークからも参加させる方法（Cloudflare Tunnel）</summary>
+                <ol>
+                  <li>このターミナルを閉じて、代わりに以下を実行してください：</li>
+                  <li><code>npm run game:tunnel</code></li>
+                  <li>（2ゲーム目以降）<code>npm run game -- --port 4174 --tunnel --name "Bチーム"</code></li>
+                  <li>表示されたURLを参加者に共有すれば完了です。cloudflaredのインストールは自動で行われます。</li>
+                </ol>
+                <p className="connection-guide-note">
+                  複数ゲームを同時進行する場合は、ゲームごとに別のターミナルで上記コマンドを実行してください。
+                  それぞれ独立したURLが発行されます。
+                </p>
+              </details>
+            </div>
+          )}
         </section>
       )}
 
@@ -638,6 +709,37 @@ function App() {
               フォールバックモード
             </label>
           </div>
+
+          {/* Simultaneous mode progress controls (master feature) */}
+          {state.mode === "life_map" && state.currentChoiceMode === "simultaneous" && (
+            <div className="host-ops-simultaneous">
+              {state.phase === "choosing" && (
+                <div className="host-ops-simultaneous-status">
+                  <div className="host-ops-simultaneous-count">
+                    {Object.keys(state.pendingLifeChoices ?? {}).length} /{" "}
+                    {state.players.filter((p) => p.online).length} 人が選択済み
+                  </div>
+                  <button
+                    className="host-ops-force-advance"
+                    onClick={forceAdvanceChoices}
+                  >
+                    強制進行（未選択者をスキップ）
+                  </button>
+                </div>
+              )}
+              {state.phase === "revealed" && (
+                <div className="host-ops-simultaneous-status">
+                  <div className="host-ops-simultaneous-count">全員の選択が開示されました</div>
+                  <button
+                    className="host-ops-next-event"
+                    onClick={advanceAfterReveal}
+                  >
+                    次のイベントへ進む
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {state.fallbackMode && (
             <div className="host-ops-fallback">
@@ -875,6 +977,36 @@ function App() {
       {/* ── Actions ───────────────────────────────────────────────── */}
       {clientId && !isInGame && (
         <section className="panel">
+          {/* Philosophy selector (master feature): equal vs realistic */}
+          <h2>ゲームの哲学</h2>
+          <p className="philosophy-description">人生マップで使う選択肢の設計思想を選んでください。どちらも「正しい」答えはありません。</p>
+          <div className="philosophy-selector">
+            <button
+              className={`philosophy-card${choicePhilosophy === "equal" ? " selected" : ""}`}
+              onClick={() => setChoicePhilosophy("equal")}
+            >
+              <div className="philosophy-card-title">すべての体験は等しく貴重だ</div>
+              <div className="philosophy-card-creed">
+                設計理念: どんな大学生活も、その人なりの充実がある。サークルに打ち込めば人間関係が豊かに、勉強に集中すれば学業が伸びる——どの道も「正解」。
+              </div>
+              <div className="philosophy-card-effect">
+                ゲームへの影響: 全選択肢の効果合計が自動的に均等化されます。プレイヤーは失敗を恐れず自分の価値観を表現できます。どんな選択も何かを得られます。
+              </div>
+            </button>
+            <button
+              className={`philosophy-card${choicePhilosophy === "realistic" ? " selected" : ""}`}
+              onClick={() => setChoicePhilosophy("realistic")}
+            >
+              <div className="philosophy-card-title">さすがにそれはやめとけ</div>
+              <div className="philosophy-card-creed">
+                設計理念: 大学生活には本当の失敗がある。テストをサボれば単位も時間も失う。すべての選択が等しく意味があるわけではない。
+              </div>
+              <div className="philosophy-card-effect">
+                ゲームへの影響: 選択肢の効果をそのまま反映。一部の選択は複数の面で不利になります。「あの選択は本当にまずかった」という体験ができます。なお単位は一度取ったら減りません。
+              </div>
+            </button>
+          </div>
+
           <h2>アクション</h2>
           <div className="actions">
             <button
