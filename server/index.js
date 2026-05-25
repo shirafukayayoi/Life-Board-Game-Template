@@ -1120,6 +1120,9 @@ function presentTimelineEvent() {
   state.currentEvent = publicEvent;
   state.availableChoiceIds = publicEvent.choices.map((choice) => choice.id);
   state.pendingLifeChoices = {};
+  state.pendingLifeResults = {};
+  // Master feature: per-event choice mode (simultaneous reveals together vs sequential broadcasts each)
+  state.currentChoiceMode = event.choiceMode === "simultaneous" ? "simultaneous" : "sequential";
   state.lastChoiceResult = null;
   state.turnStartedAt = Date.now();
   setLifePlayersAtSquare(getSeasonHubSquareId(event));
@@ -1157,7 +1160,15 @@ function processTimelineChoice(player, choiceId, submittedBy = "controller") {
   };
   state.lastChoiceResult = result;
   recordChoiceHistory(player, event, choice, visibleEffects, choice.flagEffects ?? choice.setFlags, submittedBy);
-  broadcast({ type: "choice_result", result });
+
+  // Master feature: simultaneous mode holds results until everyone is done.
+  // Sequential mode broadcasts each result immediately (original codex behavior).
+  if (state.currentChoiceMode === "simultaneous") {
+    if (!state.pendingLifeResults) state.pendingLifeResults = {};
+    state.pendingLifeResults[player.id] = result;
+  } else {
+    broadcast({ type: "choice_result", result });
+  }
 
   if (tryAdvanceTimelineEvent(event)) {
     return;
@@ -1177,6 +1188,19 @@ function tryAdvanceTimelineEvent(event = getCurrentTimelineEvent()) {
     return false;
   }
 
+  // Master feature: in simultaneous mode, reveal all choices together
+  // and wait for the host to advance (state.phase = "revealed").
+  if (state.currentChoiceMode === "simultaneous") {
+    const results = activePlayerIds
+      .map((playerId) => state.pendingLifeResults?.[playerId])
+      .filter(Boolean);
+    state.phase = "revealed";
+    broadcast({ type: "all_choices_revealed", results });
+    broadcastState();
+    return true;
+  }
+
+  // Sequential mode: immediately advance to the next event (codex behavior).
   state.lifePlayers = state.lifePlayers.map((lifePlayer) => {
     const selectedId = state.pendingLifeChoices[lifePlayer.id];
     const selectedChoice = event.choices.find((c) => c.id === selectedId);
@@ -1191,6 +1215,27 @@ function tryAdvanceTimelineEvent(event = getCurrentTimelineEvent()) {
   }
   presentTimelineEvent();
   return true;
+}
+
+// Master feature: advance after the host reviews all simultaneous results.
+function advanceAfterReveal() {
+  if (state.mode !== "life_map" || state.phase !== "revealed") return;
+  const event = getCurrentTimelineEvent();
+  if (!event) return;
+
+  state.lifePlayers = state.lifePlayers.map((lifePlayer) => {
+    const selectedId = state.pendingLifeChoices[lifePlayer.id];
+    const selectedChoice = event.choices.find((c) => c.id === selectedId);
+    if (!selectedChoice) return lifePlayer;
+    return applyTimelineChoice(lifePlayer, event, selectedChoice);
+  });
+
+  state.currentSeasonIndex += 1;
+  if (state.currentSeasonIndex >= TIMELINE_EVENTS.length) {
+    endTimelineGame();
+    return;
+  }
+  presentTimelineEvent();
 }
 
 function endTimelineGame() {
@@ -2190,6 +2235,11 @@ wss.on("connection", (socket) => {
       state.yearRecap = null;
       state.currentSeasonIndex = 0;
       state.pendingLifeChoices = {};
+      state.pendingLifeResults = {};
+      // Master feature: choice philosophy ("equal" | "realistic")
+      // NOTE: currently stored only; actual gameplay differentiation
+      // is tracked in a follow-up issue (interacts with codex's effectBudget).
+      state.choicePhilosophy = payload.philosophy === "realistic" ? "realistic" : "equal";
       state.fallbackMode = false;
       for (const player of state.players) {
         player.resources = defaultResources();
@@ -2325,6 +2375,33 @@ wss.on("connection", (socket) => {
       if (state.mode === "life_map") return;
       if (state.phase !== "year_recap") return;
       presentYearAnchorEvent(state.currentRound);
+      return;
+    }
+
+    // ─── host_force_advance_choices (master feature: simultaneous mode) ──
+    if (payload.type === "host_force_advance_choices") {
+      if (client.role !== "host" || client.id !== hostId) return;
+      if (state.mode !== "life_map" || state.phase !== "choosing") return;
+      if (state.currentChoiceMode !== "simultaneous") return;
+
+      const firstChoiceId = state.availableChoiceIds[0];
+      if (!firstChoiceId) return;
+
+      const activePlayerIds = state.players.filter((p) => p.online).map((p) => p.id);
+      for (const playerId of activePlayerIds) {
+        if (!state.pendingLifeChoices[playerId]) {
+          const player = state.players.find((p) => p.id === playerId);
+          if (player) submitChoiceForPlayer(player, firstChoiceId, "host_force");
+        }
+      }
+      return;
+    }
+
+    // ─── host_advance_after_reveal (master feature: simultaneous mode) ───
+    if (payload.type === "host_advance_after_reveal") {
+      if (client.role !== "host" || client.id !== hostId) return;
+      if (state.mode !== "life_map" || state.phase !== "revealed") return;
+      advanceAfterReveal();
       return;
     }
 
