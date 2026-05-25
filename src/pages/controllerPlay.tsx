@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { generateResultCard } from "../utils/generateCard";
 import { createRoot } from "react-dom/client";
 import { generateResultCard } from "../utils/generateCard";
 import {

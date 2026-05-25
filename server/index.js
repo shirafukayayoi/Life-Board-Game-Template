@@ -37,7 +37,6 @@ import { writeSessionLog } from "./sessionLogger.js";
 
 const PORT = Number(process.env.PORT ?? 4173);
 const STATIC_DIR = process.env.STATIC_DIR ?? "dist";
-let publicTunnelUrl = process.env.PUBLIC_URL ?? null;
 
 // Cloudflare Tunnel などで注入される公開URL（start-game.mjs が POST /admin/tunnel-url で設定）
 let publicTunnelUrl = process.env.PUBLIC_URL ?? null;
@@ -2504,31 +2503,13 @@ wss.on("connection", (socket) => {
 //  Admin Endpoints (localhost only)
 // ═══════════════════════════════════════════════════════════════════
 
-app.use(express.json());
-
-// start-game.mjs がCloudflare TunnelのURLをここにPOSTする
-app.post("/admin/tunnel-url", (req, res) => {
-  const ip = req.socket.remoteAddress ?? "";
-  const isLocal = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
-  if (!isLocal) { res.status(403).json({ error: "localhost only" }); return; }
-
-  const { url } = req.body ?? {};
-  if (!url || typeof url !== "string" || !url.startsWith("https://")) {
-    res.status(400).json({ error: "invalid url" }); return;
-  }
-
-  publicTunnelUrl = url;
-  broadcastHostUrls();
-  console.log(`\n🌐 Tunnel URL set: ${url}\n`);
-  res.json({ ok: true, url });
-});
-
 // ═══════════════════════════════════════════════════════════════════
 //  Static File Serving
 // ═══════════════════════════════════════════════════════════════════
 
 app.use(express.json());
 
+// start-game.mjs がCloudflare TunnelのURLをここにPOSTする
 app.post("/admin/tunnel-url", (req, res) => {
   const remoteAddress = req.socket.remoteAddress ?? "";
   const isLocalRequest =
@@ -2548,7 +2529,7 @@ app.post("/admin/tunnel-url", (req, res) => {
 
   publicTunnelUrl = url.replace(/\/+$/, "");
   broadcastHostUrls();
-  console.log(`Tunnel URL set: ${publicTunnelUrl}`);
+  console.log(`\n🌐 Tunnel URL set: ${publicTunnelUrl}\n`);
   res.json({ ok: true, url: publicTunnelUrl });
 });
 
