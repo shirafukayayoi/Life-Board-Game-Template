@@ -245,6 +245,7 @@ function phaseLabel(phase: GameState["phase"]) {
     rolling: "月イベント待ち",
     choosing: "選択中",
     animating: "結果発表",
+    revealed: "選択公開中", // master simultaneous mode
     year_recap: "年末報告",
     result: "結果",
   };
