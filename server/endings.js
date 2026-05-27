@@ -345,7 +345,12 @@ export function determineBoardLifeArchetype(player) {
   }
   const rawRomanceScore = scores.romance ?? 0;
   const romanceAnchorCount = countAnchors(player, ["romance"]);
-  const romanceCommitmentBonus = (player.flags?.has_partner ? 3 : 0) + (romanceAnchorCount * 4);
+  const romanceHistoryBonus = ((player.romance?.relationshipStartCount ?? 0) * 6)
+    + ((player.romance?.dateCount ?? 0) * 1)
+    + ((player.romance?.breakupCount ?? 0) * 1);
+  const romanceCommitmentBonus = (player.flags?.has_partner ? 3 : 0)
+    + (romanceAnchorCount * 4)
+    + romanceHistoryBonus;
   const romanceScore = rawRomanceScore + romanceCommitmentBonus;
   const restScore = scores.rest ?? 0;
   const nonAcademicTop = Math.max(socialScore, careerScore, creativeScore, romanceScore, restScore);
@@ -358,6 +363,7 @@ export function determineBoardLifeArchetype(player) {
 
   const hasCommittedRomancePath = (
     (player.flags?.has_partner && rawRomanceScore >= 2)
+    || ((player.romance?.relationshipStartCount ?? 0) >= 1 && romanceScore + 12 >= socialScore)
     || (romanceAnchorCount >= 2 && rawRomanceScore >= 4)
   )
     && romanceScore + 9 >= socialScore;
@@ -430,6 +436,7 @@ export function generateResults(players) {
     return {
       playerId: entry.player.id,
       playerName: entry.player.name,
+      gender: entry.player.gender ?? "unset",
       score: entry.score,
       rank: index + 1,
       ending: determineEnding(entry.player),
@@ -441,10 +448,12 @@ export function generateResults(players) {
       resources: entry.player.resources,
       experience: entry.player.experience,
       flags: entry.player.flags,
+      romance: entry.player.romance,
       flagHistory: entry.player.flagHistory,
       pathScores: collectPathScores(entry.player),
       yearAnchors: entry.player.yearAnchors ?? [],
       milestones: entry.player.milestones ?? [],
+      yearLogs: entry.player.yearLogs ?? [],
       storyTags: topIntentTags(collectPathScores(entry.player)),
       choiceHistory: entry.player.choiceHistory ?? [],
     };

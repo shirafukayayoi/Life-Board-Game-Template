@@ -191,8 +191,10 @@
         "label": "反省する",
         "effects": {
           "money": -1
-        }
+        },
+        "preserveEffects": true
       }
-    ]
+    ],
+    "weight": 3
   }
 }

@@ -132,12 +132,18 @@ export function normalizeStatEffectsToBudget(effects = {}, targetTotal = EFFECT_
 }
 
 export function normalizeChoiceEffectBudget(choice, context = {}) {
+  if (choice?.preserveEffects) {
+    return mergeStatEffects(choice?.effects);
+  }
   const target = getEffectBudgetTarget({ ...context, choice });
   const growthKey = pickGrowthStat(choice?.effects, choice);
   return normalizeStatEffectsToBudget(choice?.effects ?? {}, target, { choice, growthKey });
 }
 
 export function normalizeChoiceEffectOutcome(choice, extraEffects = {}, context = {}) {
+  if (choice?.preserveEffects) {
+    return mergeStatEffects(choice?.effects, extraEffects);
+  }
   const target = getEffectBudgetTarget({ ...context, choice });
   const mergedEffects = mergeStatEffects(choice?.effects, extraEffects);
   const growthKey = pickGrowthStat(mergedEffects, choice);

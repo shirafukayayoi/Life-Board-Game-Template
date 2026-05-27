@@ -7,6 +7,7 @@ import {
   getRoundInfo,
   type ClientMessage,
   type Faculty,
+  type Gender,
   type GameState,
   type HostManagedPlayer,
   type ServerMessage,
@@ -21,6 +22,13 @@ const FACULTY_LABELS: Record<Faculty, string> = {
   education: "教育",
   medical: "医療",
   arts_sports: "芸術・スポーツ",
+};
+
+const GENDER_LABELS: Record<Gender, string> = {
+  male: "男性",
+  female: "女性",
+  other: "その他",
+  unset: "未選択",
 };
 
 const HOST_JOURNEY_STAGES = [
@@ -270,20 +278,11 @@ function App() {
 
   const startGame = () => {
     if (!clientId) return;
-    if (state.players.length < 1) {
-      setStatus("参加者が必要です");
+    if (state.players.filter((player) => player.online).length < 1) {
+      setStatus("オンラインの参加者が必要です");
       return;
     }
     sendMessage({ type: "start_game" });
-  };
-
-  const startLifeMapGame = () => {
-    if (!clientId) return;
-    if (state.players.length < 1) {
-      setStatus("参加者が必要です");
-      return;
-    }
-    sendMessage({ type: "start_life_map_game" });
   };
 
   const resetGame = () => {
@@ -324,6 +323,10 @@ function App() {
 
   const continueYearRecap = () => {
     sendMessage({ type: "continue_year_recap" });
+  };
+
+  const continueTurnResults = () => {
+    sendMessage({ type: "continue_turn_results" });
   };
 
   const getEventForFallbackPlayer = (playerId: string) => {
@@ -375,12 +378,14 @@ function App() {
   };
 
   const isInGame = state.phase !== "lobby";
+  const onlinePlayerCount = state.players.filter((player) => player.online).length;
   const managementRows: HostManagedPlayer[] = managedPlayers.length > 0
     ? managedPlayers
     : state.players.map((player) => ({
         id: player.id,
         name: player.name,
         faculty: player.faculty,
+        gender: player.gender,
         passkey: "",
         online: player.online,
       }));
@@ -503,7 +508,14 @@ function App() {
 
       {isInGame && state.mode !== "life_map" && state.lastTurnGroupResults && state.lastTurnGroupResults.length > 0 && (
         <section className="panel">
-          <h2>直前の選択</h2>
+          <div className="host-ops-section-header">
+            <h2>直前の選択</h2>
+            {state.phase === "animating" && (
+              <button onClick={continueTurnResults}>
+                次へ進む
+              </button>
+            )}
+          </div>
           <div className="players">
             {state.lastTurnGroupResults.map((result, index) => (
               <div key={`${result.playerId}-${result.choiceId}`} className="player-card">
@@ -564,8 +576,11 @@ function App() {
                   <span>📚 {player.credits}単位</span>
                   <span>💰 {player.resources.money}</span>
                   <span>❤️ {player.resources.health}</span>
-                  <span>🧠 {player.experience.intellect}</span>
-                  <span>🤝 {player.experience.connections}</span>
+                  <span>🧠 {Math.round(player.experience.intellect)}</span>
+                  <span>🤝 {Math.round(player.experience.connections)}</span>
+                  <span>{player.flags.has_partner ? "💕 恋人あり" : "♡ 恋人なし"}</span>
+                  <span>{player.gender === "male" ? "元カノ数" : player.gender === "female" ? "元カレ数" : "元恋人数"} {player.romance?.exPartnerCount ?? 0}</span>
+                  {player.flags.cheating && <span>⚠ 浮気あり</span>}
                 </div>
                 <p style={{ margin: "10px 0 0", color: "var(--text-primary)", fontWeight: 700 }}>
                   卒業見込み: {player.graduationOutlook}
@@ -593,6 +608,7 @@ function App() {
           <div className="host-ops-management-row host-ops-management-row--head">
             <span>名前</span>
             <span>学部</span>
+            <span>性別</span>
             <span>パスキー</span>
             <span>状態</span>
             <span>操作</span>
@@ -607,6 +623,7 @@ function App() {
             >
               <span className="host-ops-management-name">{player.name}</span>
               <span>{FACULTY_LABELS[player.faculty]}</span>
+              <span>{GENDER_LABELS[player.gender]}</span>
               <span className="host-ops-passkey">{player.passkey || "-"}</span>
               <span>{player.online ? "online" : "offline"}</span>
               <span>
@@ -878,18 +895,11 @@ function App() {
           <h2>アクション</h2>
           <div className="actions">
             <button
-              onClick={startLifeMapGame}
-              disabled={state.players.length < 1}
-            >
-              人生マップで開始
-              {state.players.length < 1 && " (参加者が必要)"}
-            </button>
-            <button
-              className="ghost"
               onClick={startGame}
-              disabled={state.players.length < 1}
+              disabled={onlinePlayerCount < 1}
             >
-              48か月ボードで開始
+              ゲームを開始
+              {onlinePlayerCount < 1 && " (オンライン参加者が必要)"}
             </button>
             <button className="ghost" onClick={openDisplay}>
               ディスプレイを開く

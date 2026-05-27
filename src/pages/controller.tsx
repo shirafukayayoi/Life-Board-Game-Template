@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 import {
   type ClientMessage,
   type Faculty,
+  type Gender,
   type GameState,
   type ServerMessage,
   colorForPlayer,
@@ -28,9 +29,23 @@ const FACULTY_LABELS: Record<Faculty, string> = {
 
 const FACULTY_OPTIONS = Object.entries(FACULTY_LABELS) as [Faculty, string][];
 
+const GENDER_LABELS: Record<Gender, string> = {
+  male: "男性",
+  female: "女性",
+  other: "その他",
+  unset: "未選択",
+};
+
+const GENDER_OPTIONS = Object.entries(GENDER_LABELS) as [Gender, string][];
+
 function readStoredFaculty(): Faculty {
   const storedFaculty = sessionStorage.getItem("clg_faculty");
   return FACULTY_OPTIONS.find(([value]) => value === storedFaculty)?.[0] ?? "humanities";
+}
+
+function readStoredGender(): Gender {
+  const storedGender = sessionStorage.getItem("clg_gender");
+  return GENDER_OPTIONS.find(([value]) => value === storedGender)?.[0] ?? "unset";
 }
 
 // ─── Styles ──────────────────────────────────────────────────────
@@ -207,6 +222,7 @@ const S = {
 export function ControllerLobbyPage() {
   const [name, setName] = useState(sessionStorage.getItem("clg_name") ?? "");
   const [faculty, setFaculty] = useState<Faculty>(readStoredFaculty);
+  const [gender, setGender] = useState<Gender>(readStoredGender);
   const [passkey, setPasskey] = useState(
     sessionStorage.getItem("clg_passkey") ?? ""
   );
@@ -266,11 +282,13 @@ export function ControllerLobbyPage() {
         role: "controller",
         clientId: sessionStorage.getItem("clg_controller_id") ?? undefined,
         faculty,
+        gender,
         passkey: trimmedPasskey || undefined,
       };
       socket.send(JSON.stringify(payload));
       sessionStorage.setItem("clg_name", name.trim());
       sessionStorage.setItem("clg_faculty", faculty);
+      sessionStorage.setItem("clg_gender", gender);
       if (trimmedPasskey) {
         sessionStorage.setItem("clg_passkey", trimmedPasskey);
       }
@@ -345,7 +363,7 @@ export function ControllerLobbyPage() {
       setJoining(false);
       wsRef.current = null;
     };
-  }, [faculty, hostUrl, name, navigateToPlay, passkey]);
+  }, [faculty, gender, hostUrl, name, navigateToPlay, passkey]);
 
   // Auto-connect if name is saved
   useEffect(() => {
@@ -426,6 +444,17 @@ export function ControllerLobbyPage() {
             onChange={(e) => setFaculty(e.target.value as Faculty)}
           >
             {FACULTY_OPTIONS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <select
+            style={S.select}
+            value={gender}
+            onChange={(e) => setGender(e.target.value as Gender)}
+          >
+            {GENDER_OPTIONS.map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
@@ -531,6 +560,10 @@ export function ControllerLobbyPage() {
         <div style={S.infoRow}>
           <span>学部</span>
           <span style={{ color: "#374151" }}>{FACULTY_LABELS[faculty]}</span>
+        </div>
+        <div style={S.infoRow}>
+          <span>性別</span>
+          <span style={{ color: "#374151" }}>{GENDER_LABELS[gender]}</span>
         </div>
         <div style={S.infoRow}>
           <span>パスキー</span>

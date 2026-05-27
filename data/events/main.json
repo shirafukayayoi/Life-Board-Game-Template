@@ -236,13 +236,17 @@
       },
       {
         "id": "4B",
-        "label": "友人と過去問を共有する",
+        "label": "先輩から過去問をもらう",
         "effects": {
-          "credits": 8,
-          "connections": 2,
-          "intellect": 2
+          "credits": 5
         },
-        "polarity": "positive"
+        "polarity": "positive",
+        "condition": {
+          "minStats": {
+            "connections": 4
+          }
+        },
+        "description": "人脈があると、先輩から試験の傾向を教えてもらえる。"
       },
       {
         "id": "4C",
@@ -326,10 +330,10 @@
     "conditionalVariants": [
       {
         "condition": {
-        "requiredFlags": {
-          "housing": "alone",
-          "living_alone": true
-        }
+          "requiredFlags": {
+            "housing": "alone",
+            "living_alone": true
+          }
         },
         "description": "すでに一人暮らしを始めている。ここからは生活の質を調整する月。",
         "choices": [
@@ -512,13 +516,17 @@
       },
       {
         "id": "10B",
-        "label": "友人と過去問を共有する",
+        "label": "先輩から過去問をもらう",
         "effects": {
-          "credits": 8,
-          "connections": 2,
-          "intellect": 2
+          "credits": 5
         },
-        "polarity": "positive"
+        "polarity": "positive",
+        "condition": {
+          "minStats": {
+            "connections": 4
+          }
+        },
+        "description": "人脈があると、先輩から試験の傾向を教えてもらえる。"
       },
       {
         "id": "10C",
@@ -615,10 +623,10 @@
     "conditionalVariants": [
       {
         "condition": {
-        "requiredFlags": {
-          "housing": "alone",
-          "living_alone": true
-        }
+          "requiredFlags": {
+            "housing": "alone",
+            "living_alone": true
+          }
         },
         "description": "住まいは固まった。2年目は専門と役割の選び方が軸になる。",
         "choices": [
@@ -741,13 +749,17 @@
       },
       {
         "id": "16B",
-        "label": "友人と過去問を共有する",
+        "label": "先輩から過去問をもらう",
         "effects": {
-          "credits": 9,
-          "connections": 2,
-          "intellect": 2
+          "credits": 5
         },
-        "polarity": "positive"
+        "polarity": "positive",
+        "condition": {
+          "minStats": {
+            "connections": 4
+          }
+        },
+        "description": "人脈があると、先輩から試験の傾向を教えてもらえる。"
       },
       {
         "id": "16C",
@@ -992,13 +1004,17 @@
       },
       {
         "id": "22B",
-        "label": "友人と過去問を共有する",
+        "label": "先輩から過去問をもらう",
         "effects": {
-          "credits": 9,
-          "connections": 2,
-          "intellect": 2
+          "credits": 5
         },
-        "polarity": "positive"
+        "polarity": "positive",
+        "condition": {
+          "minStats": {
+            "connections": 4
+          }
+        },
+        "description": "人脈があると、先輩から試験の傾向を教えてもらえる。"
       },
       {
         "id": "22C",
@@ -1214,13 +1230,17 @@
       },
       {
         "id": "28B",
-        "label": "友人と過去問を共有する",
+        "label": "先輩から過去問をもらう",
         "effects": {
-          "credits": 10,
-          "connections": 2,
-          "intellect": 2
+          "credits": 5
         },
-        "polarity": "positive"
+        "polarity": "positive",
+        "condition": {
+          "minStats": {
+            "connections": 4
+          }
+        },
+        "description": "人脈があると、先輩から試験の傾向を教えてもらえる。"
       },
       {
         "id": "28C",
@@ -1448,13 +1468,17 @@
       },
       {
         "id": "34B",
-        "label": "友人と過去問を共有する",
+        "label": "先輩から過去問をもらう",
         "effects": {
-          "credits": 10,
-          "connections": 2,
-          "intellect": 2
+          "credits": 5
         },
-        "polarity": "positive"
+        "polarity": "positive",
+        "condition": {
+          "minStats": {
+            "connections": 4
+          }
+        },
+        "description": "人脈があると、先輩から試験の傾向を教えてもらえる。"
       },
       {
         "id": "34C",
@@ -2241,13 +2265,17 @@
       },
       {
         "id": "46B",
-        "label": "友人と過去問を共有する",
+        "label": "先輩から過去問をもらう",
         "effects": {
-          "credits": 10,
-          "connections": 2,
-          "intellect": 2
+          "credits": 5
         },
-        "polarity": "positive"
+        "polarity": "positive",
+        "condition": {
+          "minStats": {
+            "connections": 4
+          }
+        },
+        "description": "人脈があると、先輩から試験の傾向を教えてもらえる。"
       },
       {
         "id": "46C",

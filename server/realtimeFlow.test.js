@@ -5,14 +5,16 @@ import { once } from "node:events";
 import process from "node:process";
 import WebSocket from "ws";
 
-const TEST_TIMEOUT_MS = 2500;
+const TEST_TIMEOUT_MS = 5000;
 const TURN_GROUP_RESULT_MS = 20;
+let portCounter = 0;
 
 function randomPort() {
-  return 45000 + Math.floor(Math.random() * 10000);
+  portCounter += 1;
+  return 46000 + ((process.pid + portCounter) % 12000);
 }
 
-async function startServer(t) {
+async function startServer(t, envOverrides = {}) {
   const port = randomPort();
   const child = spawn(process.execPath, ["server/index.js"], {
     cwd: process.cwd(),
@@ -21,6 +23,7 @@ async function startServer(t) {
       PORT: String(port),
       STATIC_DIR: "__missing_static_for_tests__",
       TURN_GROUP_RESULT_MS: String(TURN_GROUP_RESULT_MS),
+      ...envOverrides,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -67,7 +70,13 @@ async function connectClient(t, port, joinPayload) {
   await once(socket, "open");
   socket.send(JSON.stringify({ type: "join", ...joinPayload }));
 
-  const welcome = await waitForMessage(messages, (message) => message.type === "welcome");
+  const welcome = await waitForMessage(
+    messages,
+    (message) => message.type === "welcome" || message.type === "auth_error",
+  );
+  if (welcome.type === "auth_error") {
+    throw new Error(`Join failed for ${joinPayload.name}: ${welcome.message}`);
+  }
   t.after(() => {
     socket.close();
   });
@@ -75,6 +84,7 @@ async function connectClient(t, port, joinPayload) {
   return {
     socket,
     clientId: welcome.clientId,
+    passkey: welcome.passkey,
     messages,
     send(payload) {
       socket.send(JSON.stringify(payload));
@@ -106,6 +116,24 @@ async function connectRaw(port, joinPayload) {
 async function waitForMessage(messages, predicate) {
   const startedAt = Date.now();
   let cursor = 0;
+
+  while (Date.now() - startedAt < TEST_TIMEOUT_MS) {
+    while (cursor < messages.length) {
+      const message = messages[cursor];
+      cursor += 1;
+      if (predicate(message)) {
+        return message;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  throw new Error("Timed out waiting for expected WebSocket message");
+}
+
+async function waitForMessageAfter(messages, startIndex, predicate) {
+  const startedAt = Date.now();
+  let cursor = startIndex;
 
   while (Date.now() - startedAt < TEST_TIMEOUT_MS) {
     while (cursor < messages.length) {
@@ -509,6 +537,161 @@ test("board mode can run a whole round as one all-player answer group", async (t
   assert.equal(nextRound.state.turnMode, "all");
 });
 
+test("all-player mode keeps a rejoined player in the current answer group", async (t) => {
+  const { port } = await startServer(t);
+  const host = await connectClient(t, port, { role: "host", name: "Host" });
+  const players = [
+    await connectClient(t, port, { role: "controller", name: "Aoi" }),
+    await connectClient(t, port, { role: "controller", name: "Ren" }),
+    await connectClient(t, port, { role: "controller", name: "Mio" }),
+    await connectClient(t, port, { role: "controller", name: "Sora" }),
+  ];
+
+  host.send({ type: "set_turn_mode", mode: "all" });
+  await host.waitFor((message) => message.type === "state" && message.state.turnMode === "all");
+  host.send({ type: "start_game" });
+  await host.waitFor(
+    (message) => message.type === "state"
+      && message.state.phase === "rolling"
+      && message.state.activeTurnPlayerIds?.length === players.length,
+  );
+
+  const disconnected = players[3];
+  assert.ok(disconnected.passkey);
+  disconnected.socket.close();
+  await once(disconnected.socket, "close");
+  await host.waitFor(
+    (message) => message.type === "state"
+      && message.state.phase === "rolling"
+      && message.state.players.some((player) => player.id === disconnected.clientId && !player.online),
+  );
+
+  const restored = await connectClient(t, port, {
+    role: "controller",
+    name: "Sora",
+    clientId: disconnected.clientId,
+    passkey: disconnected.passkey,
+  });
+
+  const restoredGroup = await host.waitFor(
+    (message) => message.type === "state"
+      && message.state.phase === "rolling"
+      && message.state.players.some((player) => player.id === restored.clientId && player.online)
+      && message.state.activeTurnPlayerIds?.includes(restored.clientId),
+  );
+  assert.deepEqual(restoredGroup.state.activeTurnPlayerIds, players.map((player) => player.clientId));
+});
+
+test("display can continue the year recap without using the host tab", async (t) => {
+  const { port } = await startServer(t, { TURN_GROUP_RESULT_MS: "100000" });
+  const host = await connectClient(t, port, { role: "host", name: "Host" });
+  const display = await connectClient(t, port, { role: "display", name: "Display" });
+  const aoi = await connectClient(t, port, { role: "controller", name: "Aoi" });
+
+  host.send({ type: "start_game" });
+  await host.waitFor((message) => message.type === "state" && message.state.phase === "rolling");
+
+  for (let round = 1; round <= 12; round += 1) {
+    const beforeRollCount = host.messages.length;
+    aoi.send({ type: "player_roll" });
+    const choosing = await waitForMessageAfter(
+      host.messages,
+      beforeRollCount,
+      (message) => message.type === "state"
+        && message.state.phase === "choosing"
+        && message.state.currentRound === round
+        && message.state.availableChoiceIdsByPlayer?.[aoi.clientId]?.length > 0,
+    );
+    const beforeChoiceCount = host.messages.length;
+    aoi.send({
+      type: "player_choice",
+      choiceId: choosing.state.availableChoiceIdsByPlayer[aoi.clientId][0],
+    });
+    await waitForMessageAfter(
+      host.messages,
+      beforeChoiceCount,
+      (message) => message.type === "state"
+        && message.state.phase === "animating"
+        && message.state.currentRound === round
+        && message.state.lastTurnGroupResults?.length === 1,
+    );
+    const beforeContinueCount = host.messages.length;
+    host.send({ type: "continue_turn_results" });
+    await waitForMessageAfter(
+      host.messages,
+      beforeContinueCount,
+      (message) => message.type === "state"
+        && (round === 12
+          ? message.state.phase === "year_recap"
+          : message.state.phase === "rolling" && message.state.currentRound === round + 1),
+    );
+  }
+
+  display.send({ type: "continue_year_recap" });
+  const anchor = await host.waitFor(
+    (message) => message.type === "state"
+      && message.state.phase === "choosing"
+      && message.state.currentEvent?.id === "year_anchor:1",
+  );
+  assert.equal(anchor.state.yearRecap, null);
+});
+
+test("host can manually continue turn results before the fallback timer", async (t) => {
+  const { port } = await startServer(t, { TURN_GROUP_RESULT_MS: "100000" });
+  const host = await connectClient(t, port, { role: "host", name: "Host" });
+  const aoi = await connectClient(t, port, { role: "controller", name: "Aoi" });
+
+  host.send({ type: "start_game" });
+  await host.waitFor((message) => message.type === "state" && message.state.phase === "rolling");
+  aoi.send({ type: "player_roll" });
+  const choosing = await host.waitFor(
+    (message) => message.type === "state"
+      && message.state.phase === "choosing"
+      && message.state.availableChoiceIdsByPlayer?.[aoi.clientId]?.length > 0,
+  );
+  aoi.send({
+    type: "player_choice",
+    choiceId: choosing.state.availableChoiceIdsByPlayer[aoi.clientId][0],
+  });
+  await host.waitFor(
+    (message) => message.type === "state"
+      && message.state.phase === "animating"
+      && message.state.lastTurnGroupResults?.length === 1,
+  );
+
+  host.send({ type: "continue_turn_results" });
+  const nextRound = await host.waitFor(
+    (message) => message.type === "state"
+      && message.state.phase === "rolling"
+      && message.state.currentRound === 2,
+  );
+  assert.equal(nextRound.state.lastTurnGroupResults.length, 0);
+});
+
+test("board mode does not start with only offline players", async (t) => {
+  const { port } = await startServer(t);
+  const host = await connectClient(t, port, { role: "host", name: "Host" });
+  const aoi = await connectClient(t, port, { role: "controller", name: "Aoi" });
+  aoi.socket.close();
+  await host.waitFor(
+    (message) => message.type === "state"
+      && message.state.players.some((player) => player.id === aoi.clientId && !player.online),
+  );
+
+  host.send({ type: "set_turn_mode", mode: "all" });
+  await host.waitFor((message) => message.type === "state" && message.state.turnMode === "all");
+  const hostMessageCountBeforeStart = host.messages.length;
+  host.send({ type: "start_game" });
+  host.send({ type: "request_state" });
+
+  const stateAfterStart = await waitForMessageAfter(
+    host.messages,
+    hostMessageCountBeforeStart,
+    (message) => message.type === "state" && message.state.players.some((player) => player.id === aoi.clientId),
+  );
+  assert.equal(stateAfterStart.state.phase, "lobby");
+});
+
 test("display can submit board choices as a recovery fallback", async (t) => {
   const { port } = await startServer(t);
   const host = await connectClient(t, port, { role: "host", name: "Host" });
@@ -735,6 +918,7 @@ test("board mode pauses for year recap after the first school year", async (t) =
   const recapAoi = recapState.state.yearRecap.players.find((player) => player.playerId === aoi.clientId);
   assert.ok(recapAoi);
   assert.equal(recapAoi.credits >= 20, true);
+  assert.equal(typeof recapAoi.flags.has_partner, "boolean");
   assert.match(recapAoi.creditStatus, /順調|少し遅れ|挽回可能|要注意/);
 
   host.send({ type: "continue_year_recap" });
@@ -826,6 +1010,58 @@ test("controller passkey restores a player and rejects wrong passkeys", async (t
     passkey: managedAoi.passkey,
   });
   assert.equal(restored.clientId, aoi.clientId);
+});
+
+test("controller join stores gender for host management and game state", async (t) => {
+  const { port } = await startServer(t);
+  const host = await connectClient(t, port, { role: "host", name: "Host" });
+  const aoi = await connectClient(t, port, {
+    role: "controller",
+    name: "Aoi",
+    faculty: "science",
+    gender: "female",
+  });
+
+  const management = await host.waitFor(
+    (message) => message.type === "host_player_management"
+      && message.players.some((player) => player.id === aoi.clientId),
+  );
+  const managedAoi = management.players.find((player) => player.id === aoi.clientId);
+  assert.equal(managedAoi.gender, "female");
+
+  const stateMessage = await host.waitFor(
+    (message) => message.type === "state"
+      && message.state.players.some((player) => player.id === aoi.clientId),
+  );
+  const stateAoi = stateMessage.state.players.find((player) => player.id === aoi.clientId);
+  assert.equal(stateAoi.gender, "female");
+});
+
+test("stale controller socket closing does not mark a restored player offline", async (t) => {
+  const { port } = await startServer(t);
+  const host = await connectClient(t, port, { role: "host", name: "Host" });
+  const aoi = await connectClient(t, port, { role: "controller", name: "Aoi" });
+  const passkey = aoi.messages.find((message) => message.type === "welcome")?.passkey;
+  assert.ok(passkey);
+
+  const restored = await connectClient(t, port, {
+    role: "controller",
+    name: "Aoi",
+    clientId: aoi.clientId,
+    passkey,
+  });
+  assert.equal(restored.clientId, aoi.clientId);
+
+  const hostMessageCountBeforeClose = host.messages.length;
+  aoi.socket.close();
+  const stateAfterStaleClose = await waitForMessageAfter(
+    host.messages,
+    hostMessageCountBeforeClose,
+    (message) => message.type === "state"
+      && message.state.players.some((player) => player.id === aoi.clientId),
+  );
+  const restoredPlayer = stateAfterStaleClose.state.players.find((player) => player.id === aoi.clientId);
+  assert.equal(restoredPlayer?.online, true);
 });
 
 test("host fallback can open a board month and submit the current player's choice", async (t) => {

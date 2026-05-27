@@ -172,7 +172,9 @@
         "storyTags": [
           "恋愛"
         ],
-        "polarity": "mixed"
+        "polarity": "mixed",
+        "cheatAction": true,
+        "description": "恋人がいる場合は、浮気として扱われる。"
       },
       {
         "id": "random_gokon_B",

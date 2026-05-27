@@ -48,6 +48,7 @@ const FLAG_DISPLAY: Record<string, { emoji: string; label: string }> = {
   on_leave: { emoji: "\u{1F4A4}", label: "\u4F11\u5B66\u4E2D" },
   in_seminar: { emoji: "\u{1F393}", label: "\u30BC\u30DF\u6240\u5C5E" },
   teaching_cert: { emoji: "\u{1F4DC}", label: "\u6559\u8077\u8AB2\u7A0B" },
+  cheating: { emoji: "\u26A0\uFE0F", label: "\u6D6E\u6C17" },
 };
 
 const RESOURCE_EMOJI: Record<ResourceKey, string> = {
@@ -332,6 +333,16 @@ const S = {
     color: positive ? "#22c55e" : "#ef4444",
     animation: "floatUp 1.5s ease-out forwards",
     marginRight: 8,
+  }),
+  flagPill: (active: boolean) => ({
+    display: "inline-flex",
+    alignItems: "center",
+    borderRadius: 999,
+    padding: "4px 9px",
+    fontSize: 12,
+    fontWeight: 800,
+    color: active ? "#9f1239" : "#475569",
+    background: active ? "#ffe4e6" : "#f1f5f9",
   }),
   // Result
   resultEmoji: {
@@ -643,7 +654,7 @@ export function StatsDashboard({ player }: { player: Player }) {
         <div>
           {EXPERIENCE_KEYS.map((key) => {
             const range = EXPERIENCE_RANGES[key];
-            const val = player.experience[key];
+            const val = Math.round(player.experience[key]);
             const pct = Math.max(
               0,
               Math.min(
@@ -1315,6 +1326,19 @@ export function ControllerPlayPage() {
         value: (activeChoiceResult.effects as Record<string, number>)[k],
         label: labels[k],
       }));
+    const flagMessages: string[] = [];
+    if (activeChoiceResult.flagEffects?.has_partner === true) {
+      flagMessages.push("恋人ができました");
+    }
+    if (activeChoiceResult.flagEffects?.has_partner === false) {
+      flagMessages.push("恋人関係が終わりました");
+    }
+    if (activeChoiceResult.flagEffects?.cheating === true) {
+      flagMessages.push("浮気ステータスが付きました");
+    }
+    if (activeChoiceResult.randomOutcome === "cheat_exposed") {
+      flagMessages.push("浮気が発覚しました");
+    }
 
     return (
       <div style={S.card}>
@@ -1331,6 +1355,13 @@ export function ControllerPlayPage() {
               </span>
             ))}
           </div>
+          {flagMessages.length > 0 && (
+            <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+              {flagMessages.map((message) => (
+                <span key={message} style={S.flagPill(true)}>{message}</span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1415,6 +1446,14 @@ export function ControllerPlayPage() {
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
                   {player.creditStatus}
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                  <span style={S.flagPill(player.flags.has_partner)}>
+                    {player.flags.has_partner ? "恋人あり" : "恋人なし"}
+                  </span>
+                  {player.flags.cheating && (
+                    <span style={S.flagPill(true)}>浮気あり</span>
+                  )}
                 </div>
                 {player.strengths.length > 0 && (
                   <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.5 }}>

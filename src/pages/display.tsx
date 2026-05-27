@@ -62,6 +62,17 @@ const ALL_LABELS: Record<string, string> = {
   romance_exp: "恋愛力",
 };
 
+const RESULT_FLAG_LABELS: Record<string, string> = {
+  has_partner: "恋人あり",
+  cheating: "浮気",
+  has_license: "免許あり",
+  studying_abroad: "留学",
+  on_leave: "休学",
+  in_seminar: "ゼミ所属",
+  teaching_cert: "教職課程",
+  career_failed: "進路保留",
+};
+
 function effectBadges(effects: StatEffects) {
   return Object.entries(effects)
     .filter(([, v]) => v !== 0 && v !== undefined)
@@ -77,6 +88,19 @@ function effectBadges(effects: StatEffects) {
         </span>
       );
     });
+}
+
+function flagBadges(result: ChoiceResult) {
+  const labels: string[] = [];
+  if (result.flagEffects?.has_partner === true) labels.push("恋人ができた");
+  if (result.flagEffects?.has_partner === false) labels.push("恋人関係が終わった");
+  if (result.flagEffects?.cheating === true) labels.push("浮気ステータス");
+  if (result.randomOutcome === "cheat_exposed") labels.push("浮気発覚");
+  return labels.map((label) => (
+    <span key={`${result.playerId}-${label}`} className="event-effect-badge event-effect-badge--negative">
+      {label}
+    </span>
+  ));
 }
 
 const RISK_LABELS: Record<NonNullable<EventChoice["preview"]>["risk"], string> = {
@@ -235,7 +259,7 @@ function monthFromPosition(position: string) {
 
 function turnGroupName(players: DisplayPlayer[]) {
   if (players.length === 0) return "全員待機";
-  if (players.length >= 3) return `全員（${players.map((player) => player.name).join(" / ")}）`;
+  if (players.length >= 3) return `全員（${players.length}人）`;
   return players.map((player) => player.name).join(" と ");
 }
 
@@ -249,6 +273,12 @@ function phaseLabel(phase: GameState["phase"]) {
     result: "結果",
   };
   return labels[phase];
+}
+
+function exPartnerLabel(gender?: PlayerResult["gender"]) {
+  if (gender === "male") return "元カノ数";
+  if (gender === "female") return "元カレ数";
+  return "元恋人数";
 }
 
 function submissionLabel(submittedBy?: ChoiceResult["submittedBy"]) {
@@ -270,6 +300,10 @@ function TurnGroupResultPanel({ results }: { results: ChoiceResult[] }) {
           <div key={`${result.playerId}-${result.choiceId}`} className="turn-result-card">
             <div className="turn-result-card__player">{result.playerName}</div>
             <div className="turn-result-card__choice">{result.choiceLabel}</div>
+            <div className="event-effects">
+              {effectBadges(result.effects)}
+              {flagBadges(result)}
+            </div>
             <div className="turn-result-card__meta">
               {result.tone && <span>{result.tone}</span>}
               <span>{submissionLabel(result.submittedBy)}</span>
@@ -352,9 +386,11 @@ function DisplayFallbackChoicePanel({
 function YearRecapStage({
   state,
   recap,
+  onContinue,
 }: {
   state: GameState;
   recap: NonNullable<GameState["yearRecap"]>;
+  onContinue: () => void;
 }) {
   const playerIndexById = new Map(state.players.map((player, index) => [player.id, index]));
 
@@ -375,6 +411,9 @@ function YearRecapStage({
         <div className="year-recap-stage__meter">
           <strong>{recap.players.length}人</strong>
           <span>今の状態を確認中</span>
+          <button type="button" className="display-stage-button" onClick={onContinue}>
+            次の学年へ進む
+          </button>
         </div>
       </header>
 
@@ -404,8 +443,11 @@ function YearRecapStage({
                 <span>時間 {player.resources.time}</span>
                 <span>お金 {player.resources.money}</span>
                 <span>体力 {player.resources.health}</span>
-                <span>知性 {player.experience.intellect}</span>
-                <span>人脈 {player.experience.connections}</span>
+                <span>知性 {Math.round(player.experience.intellect)}</span>
+                <span>人脈 {Math.round(player.experience.connections)}</span>
+                <span>{player.flags.has_partner ? "恋人あり" : "恋人なし"}</span>
+                <span>{exPartnerLabel(player.gender)} {player.romance?.exPartnerCount ?? 0}</span>
+                {player.flags.cheating && <span>浮気あり</span>}
               </div>
 
               <div className="year-recap-card__tags">
@@ -1014,17 +1056,44 @@ export function DisplayPage() {
     }, 5000);
   }, [fadeOutEvent]);
 
-  const sendDisplayChoice = useCallback((playerId: string, choiceId: string) => {
+  const sendMessage = useCallback((payload: ClientMessage) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       return;
     }
+    wsRef.current.send(JSON.stringify(payload));
+  }, []);
+
+  const sendDisplayChoice = useCallback((playerId: string, choiceId: string) => {
     const payload: ClientMessage = {
       type: "display_player_choice",
       playerId,
       choiceId,
     };
-    wsRef.current.send(JSON.stringify(payload));
-  }, []);
+    sendMessage(payload);
+  }, [sendMessage]);
+
+  const continueYearRecap = useCallback(() => {
+    sendMessage({ type: "continue_year_recap" });
+  }, [sendMessage]);
+
+  const continueTurnResults = useCallback(() => {
+    sendMessage({ type: "continue_turn_results" });
+  }, [sendMessage]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (state.phase === "year_recap") {
+        event.preventDefault();
+        continueYearRecap();
+      } else if (state.phase === "animating") {
+        event.preventDefault();
+        continueTurnResults();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [continueTurnResults, continueYearRecap, state.phase]);
 
   // WebSocket connection
   useEffect(() => {
@@ -1267,6 +1336,64 @@ export function DisplayPage() {
                         ))}
                       </div>
                     </div>
+                    <div className="result-breakdown">
+                      <div className="result-section-title">経験値</div>
+                      <div className="result-chip-row">
+                        {EXPERIENCE_KEYS.map((key) => (
+                          <span key={key} className="result-stat-chip">
+                            {EXPERIENCE_LABELS[key]}: {Math.round(result.experience?.[key] ?? 0)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="result-breakdown">
+                      <div className="result-section-title">状態</div>
+                      <div className="result-chip-row">
+                        <span className="result-stat-chip">
+                          恋人: {result.flags?.has_partner ? "あり" : "なし"}
+                        </span>
+                        <span className="result-stat-chip">
+                          {exPartnerLabel(result.gender)}: {result.romance?.exPartnerCount ?? 0}
+                        </span>
+                        <span className="result-stat-chip">
+                          交際回数: {result.romance?.relationshipStartCount ?? 0}
+                        </span>
+                        <span className="result-stat-chip">
+                          別れた回数: {result.romance?.breakupCount ?? 0}
+                        </span>
+                        {Object.entries(result.flags ?? {})
+                          .filter(([key, value]) => value === true && RESULT_FLAG_LABELS[key])
+                          .map(([key]) => (
+                            <span key={key} className="result-stat-chip">
+                              {RESULT_FLAG_LABELS[key]}
+                            </span>
+                          ))}
+                      </div>
+                    </div>
+                    {result.yearAnchors && result.yearAnchors.length > 0 && (
+                      <div className="result-breakdown">
+                        <div className="result-section-title">一年ごとの方針ログ</div>
+                        <div className="result-chip-row">
+                          {result.yearAnchors.map((anchor) => (
+                            <span key={`${result.playerId}-${anchor.year}`} className="result-stat-chip">
+                              {anchor.year}年後: {anchor.choiceLabel}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {result.yearLogs && result.yearLogs.length > 0 && (
+                      <div className="result-breakdown">
+                        <div className="result-section-title">一年ごとの変化ログ</div>
+                        <div className="result-chip-row">
+                          {result.yearLogs.map((log) => (
+                            <span key={`${result.playerId}-log-${log.year}`} className="result-stat-chip">
+                              {log.year}年: {log.summary}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {result.scoreBreakdown && (
                       <div className="result-breakdown">
                         <div className="result-section-title">スコア内訳</div>
@@ -1384,7 +1511,7 @@ export function DisplayPage() {
       {/* ── Main ──────────────────────────────────────────────────── */}
       <div className={`display-main ${isYearRecap ? "display-main--recap" : ""}`}>
         {isYearRecap && state.yearRecap ? (
-          <YearRecapStage state={state} recap={state.yearRecap} />
+          <YearRecapStage state={state} recap={state.yearRecap} onContinue={continueYearRecap} />
         ) : (
           <>
         {/* Board area */}
@@ -1576,7 +1703,12 @@ export function DisplayPage() {
             ) : null}
 
             {isGroupResultOverlay ? (
-              <TurnGroupResultPanel results={lastTurnGroupResults} />
+              <>
+                <TurnGroupResultPanel results={lastTurnGroupResults} />
+                <button type="button" className="display-stage-button" onClick={continueTurnResults}>
+                  次へ進む
+                </button>
+              </>
             ) : hasDisplayFallbackControls ? (
               <div className="display-fallback-grid">
                 {activeChoicePanels.map((panel, index) => (
@@ -1620,9 +1752,10 @@ export function DisplayPage() {
             ) : null}
 
             {/* Show effects after choice */}
-            {!isGroupResultOverlay && choiceResult && effectBadges(choiceResult.effects).length > 0 && (
+            {!isGroupResultOverlay && choiceResult && (
               <div className="event-effects">
                 {effectBadges(choiceResult.effects)}
+                {flagBadges(choiceResult)}
               </div>
             )}
             {!isGroupResultOverlay && lastTurnGroupResults.length > 1 && (

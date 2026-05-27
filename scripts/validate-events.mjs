@@ -44,6 +44,14 @@ function validateEffects(effects, context) {
 }
 
 function validateEffectBudget(choice, context, budgetContext) {
+  if (choice.preserveEffects) {
+    validateEffects(choice.effects, context);
+    if ((choice.effects?.credits ?? 0) < 0) {
+      errors.push(`${context}: preserved credits must not be negative`);
+    }
+    return;
+  }
+
   const targetTotal = choice.effectBudgetTarget ?? budgetContext.event?.effectBudgetTarget;
   const target = getEffectBudgetTarget({ ...budgetContext, choice, targetTotal });
   const outcomes = getChoiceEffectBudgetOutcomes(choice, { ...budgetContext, targetTotal });
@@ -174,6 +182,7 @@ function validateSemanticPrerequisites(choice, event, variant, context) {
   for (const rule of SEMANTIC_PREREQUISITE_RULES) {
     if (!rule.regex.test(text)) continue;
     if (choice.flagEffects?.[rule.flag] === true || choice.setFlags?.[rule.flag] === true) continue;
+    if (rule.flag === "has_partner" && choice.cheatAction) continue;
     const isRequired = requiresSemanticFlag(choice.condition, rule.flag)
       || requiresSemanticFlag(event.condition, rule.flag)
       || requiresSemanticFlag(variant?.condition, rule.flag);

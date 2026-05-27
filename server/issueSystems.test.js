@@ -192,6 +192,7 @@ function collectSemanticPrerequisiteProblems() {
           for (const rule of rules) {
             if (!rule.regex.test(`${eventText} ${choiceText}`)) continue;
             if (choice.flagEffects?.[rule.flag] === true || choice.setFlags?.[rule.flag] === true) continue;
+            if (rule.flag === "has_partner" && choice.cheatAction) continue;
             const isRequired = hasRequiredFlag(choice.condition, rule.flag)
               || hasRequiredFlag(event.condition, rule.flag)
               || hasRequiredFlag(variant?.condition, rule.flag);
@@ -260,8 +261,51 @@ test("main events cover living alone, career, romance, faculty, and never subtra
   }
 });
 
+test("experience stats have integer values and enough headroom", () => {
+  const serverSource = fs.readFileSync(new URL("./index.js", import.meta.url), "utf8");
+  const sharedSource = fs.readFileSync(new URL("../src/domain/gameShared.ts", import.meta.url), "utf8");
+
+  for (const key of ["intellect", "connections", "work_tolerance", "action_power", "romance_exp"]) {
+    assert.match(serverSource, new RegExp(`${key}:\\s*\\{ min: 0, max: 24 \\}`), `${key} server range should cap at 24`);
+    assert.match(sharedSource, new RegExp(`${key}:\\s*\\{ min: 0, max: 24 \\}`), `${key} shared range should cap at 24`);
+  }
+
+  assert.doesNotMatch(serverSource, /experience\.[a-z_]+[\s\S]{0,80}\+\s*0\./, "server should not add fractional experience");
+});
+
+test("random and threshold event rules match player state", () => {
+  const gokon = RANDOM_POOL.random_gokon;
+  const gokonAttend = gokon.choices.find((choice) => choice.id === "random_gokon_A");
+  assert.equal(gokonAttend?.cheatAction, true, "going to a gokon with a partner should be treated as cheating risk");
+
+  const unlit = THRESHOLD_EVENTS["無灯火運転"];
+  assert.equal(unlit.choices[0].preserveEffects, true, "unlit driving penalty should not be normalized into credits");
+  const unlitEffects = normalizeChoiceEffectBudget(unlit.choices[0], { isThresholdEvent: true });
+  assert.equal(unlitEffects.credits ?? 0, 0, "unlit driving should not increase credits");
+});
+
+test("past exam choices require social connections and reward credits", () => {
+  const pastExamChoices = Object.values(EVENTS)
+    .flatMap(collectChoices)
+    .filter((choice) => /過去問/.test(choice.label));
+
+  assert.ok(pastExamChoices.length >= 4, "board should contain recurring past-exam choices");
+  for (const choice of pastExamChoices) {
+    assert.ok(
+      (choice.condition?.minStats?.connections ?? 0) >= 4,
+      `${choice.id} should require enough connections`,
+    );
+    const normalized = normalizeChoiceEffectBudget(choice, {
+      event: { condition: choice.condition },
+      targetTotal: EFFECT_BUDGET_GATED_TOTAL,
+    });
+    assert.ok((normalized.credits ?? 0) >= 5, `${choice.id} should grant extra credits`);
+  }
+});
+
 test("effect budget normalization keeps board choices at +3 and gated choices at +5", () => {
   for (const entry of collectBudgetedMainChoices()) {
+    if (entry.choice.preserveEffects) continue;
     const target = getEffectBudgetTarget(entry);
     const outcomes = getChoiceEffectBudgetOutcomes(entry.choice, { targetTotal: target });
 
@@ -299,6 +343,7 @@ test("threshold effects normalize to the gated budget without negative credits",
 
   for (const [eventKey, event] of Object.entries(THRESHOLD_EVENTS)) {
     for (const choice of event.choices ?? []) {
+      if (choice.preserveEffects) continue;
       const normalized = normalizeChoiceEffectBudget(choice, {
         isThresholdEvent: true,
       });

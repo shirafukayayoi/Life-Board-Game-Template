@@ -92,6 +92,16 @@ export interface PlayerMilestone {
   storyTags?: string[];
 }
 
+export interface YearLog {
+  year: 1 | 2 | 3 | 4;
+  summary: string;
+  choices: string[];
+  resources: ResourceStats;
+  experience: ExperienceStats;
+  flags: SpecialFlags;
+  romance: RomanceState;
+}
+
 export interface SpecialFlags {
   housing: HousingType;
   living_alone: boolean;
@@ -161,6 +171,7 @@ export interface EventChoice {
   effectBudgetTarget?: 3 | 5;
   preserveEffects?: boolean;
   skipRecovery?: boolean;
+  cheatingRecoveryPay?: boolean;
   resultWeight?: number;
   yearAnchor?: boolean;
 }
@@ -217,14 +228,27 @@ export interface BoardPosition {
 
 // ─── Player ───────────────────────────────────────────────────────
 export type Role = "host" | "display" | "controller";
+export type Gender = "male" | "female" | "other" | "unset";
+
+export interface RomanceState {
+  partnerStartedRound: number | null;
+  exPartnerCount: number;
+  relationshipStartCount: number;
+  breakupCount: number;
+  dateCount: number;
+  moneyTroubleRounds: number[];
+  cheatingRecoveryOfferRound: number | null;
+}
 
 export interface Player {
   id: string;
   name: string;
   faculty: Faculty;
+  gender: Gender;
   resources: ResourceStats;
   experience: ExperienceStats;
   flags: SpecialFlags;
+  romance: RomanceState;
   position: string; // square ID, e.g. "1", "9A-1"
   lastRoll?: number;
   online: boolean;
@@ -235,6 +259,7 @@ export interface Player {
   pathScores: PathScores;
   yearAnchors: YearAnchor[];
   milestones: PlayerMilestone[];
+  yearLogs: YearLog[];
   recoveryCooldowns: Partial<Record<ResourceKey | ExperienceKey, number>>;
   recoveryUsesByYear: Record<string, number>;
 }
@@ -250,6 +275,7 @@ export interface ChoiceHistoryEntry {
   intentTags: IntentTag[];
   storyTags?: string[];
   submittedBy?: "controller" | "host" | "display";
+  romanceEvent?: "partner_started" | "breakup" | "cheating_exposed" | "cheating_hidden" | "cheating_recovered";
 }
 
 // ─── Season / Round ───────────────────────────────────────────────
@@ -364,6 +390,7 @@ export type LifeMapSquare = LifeMapSeasonHubSquare | LifeMapRouteSquare;
 export interface YearRecapPlayer {
   playerId: string;
   playerName: string;
+  gender: Gender;
   credits: number;
   creditStatus: string;
   graduationOutlook: string;
@@ -371,6 +398,8 @@ export interface YearRecapPlayer {
   warningSigns: string[];
   resources: ResourceStats;
   experience: ExperienceStats;
+  flags: SpecialFlags;
+  romance: RomanceState;
 }
 
 export interface YearRecap {
@@ -447,6 +476,7 @@ export interface HostManagedPlayer {
   id: string;
   name: string;
   faculty: Faculty;
+  gender: Gender;
   passkey: string;
   online: boolean;
 }
@@ -477,6 +507,7 @@ export interface ScoreBreakdown {
 export interface PlayerResult {
   playerId: string;
   playerName: string;
+  gender?: Gender;
   score?: number;
   rank?: number;
   ending?: Ending;
@@ -488,10 +519,12 @@ export interface PlayerResult {
   resources: ResourceStats;
   experience: ExperienceStats;
   flags: SpecialFlags;
+  romance?: RomanceState;
   flagHistory: string[];
   pathScores?: PathScores;
   yearAnchors?: YearAnchor[];
   milestones?: PlayerMilestone[];
+  yearLogs?: YearLog[];
   storyTags?: string[];
   choiceHistory?: ChoiceHistoryEntry[];
   reflection?: ReflectionQuestions;
@@ -525,7 +558,7 @@ export type ServerMessage =
   | { type: "game_result"; results: PlayerResult[] };
 
 export type ClientMessage =
-  | { type: "join"; name: string; role: Role; clientId?: string; passkey?: string; faculty?: Faculty }
+  | { type: "join"; name: string; role: Role; clientId?: string; passkey?: string; faculty?: Faculty; gender?: Gender }
   | { type: "start_game" }
   | { type: "start_life_map_game" }
   | { type: "end_game" }
@@ -537,6 +570,7 @@ export type ClientMessage =
   | { type: "host_player_choice"; playerId: string; choiceId: string }
   | { type: "display_player_choice"; playerId: string; choiceId: string }
   | { type: "continue_year_recap" }
+  | { type: "continue_turn_results" }
   | { type: "player_roll" }
   | { type: "player_choice"; choiceId: string }
   | { type: "request_state" };
@@ -590,6 +624,18 @@ export function defaultFlags(): SpecialFlags {
   };
 }
 
+export function defaultRomanceState(): RomanceState {
+  return {
+    partnerStartedRound: null,
+    exPartnerCount: 0,
+    relationshipStartCount: 0,
+    breakupCount: 0,
+    dateCount: 0,
+    moneyTroubleRounds: [],
+    cheatingRecoveryOfferRound: null,
+  };
+}
+
 export function defaultGameState(): GameState {
   return {
     mode: "board",
@@ -633,11 +679,11 @@ export const RESOURCE_RANGES: Record<ResourceKey, { min: number; max: number }> 
 };
 
 export const EXPERIENCE_RANGES: Record<ExperienceKey, { min: number; max: number }> = {
-  intellect: { min: 0, max: 10 },
-  connections: { min: 0, max: 10 },
-  work_tolerance: { min: 0, max: 10 },
-  action_power: { min: 0, max: 10 },
-  romance_exp: { min: 0, max: 10 },
+  intellect: { min: 0, max: 24 },
+  connections: { min: 0, max: 24 },
+  work_tolerance: { min: 0, max: 24 },
+  action_power: { min: 0, max: 24 },
+  romance_exp: { min: 0, max: 24 },
 };
 
 export function clampResource(key: ResourceKey, value: number): number {
@@ -647,7 +693,7 @@ export function clampResource(key: ResourceKey, value: number): number {
 
 export function clampExperience(key: ExperienceKey, value: number): number {
   const range = EXPERIENCE_RANGES[key];
-  return Math.max(range.min, Math.min(range.max, value));
+  return Math.round(Math.max(range.min, Math.min(range.max, value)));
 }
 
 // ─── Month Advance ────────────────────────────────────────────────

@@ -347,7 +347,7 @@ button.ghost:hover:not(:disabled) {
 
 .host-ops-management-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1.4fr) minmax(88px, 0.9fr) minmax(88px, 0.8fr) minmax(76px, 0.7fr) auto;
+  grid-template-columns: minmax(120px, 1.4fr) minmax(88px, 0.9fr) minmax(76px, 0.7fr) minmax(88px, 0.8fr) minmax(76px, 0.7fr) auto;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
@@ -690,10 +690,17 @@ button.ghost:hover:not(:disabled) {
   text-align: center;
   font-size: 16px;
   font-weight: 600;
+  min-width: 0;
 }
 
 .display-header__turn-name {
   color: var(--year-1);
+  display: inline-block;
+  max-width: min(42vw, 520px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 .display-header__right {
@@ -2321,6 +2328,22 @@ button.ghost:hover:not(:disabled) {
 
 .event-card--group {
   width: min(1120px, 94vw);
+  max-height: min(86vh, 760px);
+  overflow: auto;
+}
+
+.display-stage-button {
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  padding: 10px 18px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.display-stage-button:hover {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .event-card--major {
@@ -2478,7 +2501,7 @@ button.ghost:hover:not(:disabled) {
 
 .display-fallback-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 14px;
 }
 
